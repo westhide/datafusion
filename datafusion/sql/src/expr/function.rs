@@ -46,18 +46,18 @@ pub fn suggest_valid_function(
         let mut funcs = Vec::new();
 
         funcs.extend(AggregateFunction::iter().map(|func| func.to_string()));
-        funcs.extend(ctx.udafs_names());
+        funcs.extend(ctx.udaf_names());
         funcs.extend(BuiltInWindowFunction::iter().map(|func| func.to_string()));
-        funcs.extend(ctx.udwfs_names());
+        funcs.extend(ctx.udwf_names());
 
         funcs
     } else {
         // All scalar functions and aggregate functions
         let mut funcs = Vec::new();
 
-        funcs.extend(ctx.udfs_names());
+        funcs.extend(ctx.udf_names());
         funcs.extend(AggregateFunction::iter().map(|func| func.to_string()));
-        funcs.extend(ctx.udafs_names());
+        funcs.extend(ctx.udaf_names());
 
         funcs
     };
@@ -297,22 +297,24 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
         &self,
         name: &str,
     ) -> Result<WindowFunctionDefinition> {
-        expr::find_df_window_func(name)
-            // next check user defined aggregates
-            .or_else(|| {
-                self.context_provider
-                    .get_aggregate_meta(name)
-                    .map(WindowFunctionDefinition::AggregateUDF)
-            })
-            // next check user defined window functions
-            .or_else(|| {
-                self.context_provider
-                    .get_window_meta(name)
-                    .map(WindowFunctionDefinition::WindowUDF)
-            })
-            .ok_or_else(|| {
-                plan_datafusion_err!("There is no window function named {name}")
-            })
+        // check udaf first
+        let udaf = self.context_provider.get_aggregate_meta(name);
+        // Skip first value and last value, since we expect window builtin first/last value not udaf version
+        if udaf.as_ref().is_some_and(|udaf| {
+            udaf.name() != "first_value" && udaf.name() != "last_value"
+        }) {
+            Ok(WindowFunctionDefinition::AggregateUDF(udaf.unwrap()))
+        } else {
+            expr::find_df_window_func(name)
+                .or_else(|| {
+                    self.context_provider
+                        .get_window_meta(name)
+                        .map(WindowFunctionDefinition::WindowUDF)
+                })
+                .ok_or_else(|| {
+                    plan_datafusion_err!("There is no window function named {name}")
+                })
+        }
     }
 
     fn sql_fn_arg_to_logical_expr(
@@ -358,10 +360,8 @@ impl<'a, S: ContextProvider> SqlToRel<'a, S> {
         match arg.get_type(schema)? {
             DataType::List(_)
             | DataType::LargeList(_)
-            | DataType::FixedSizeList(_, _) => Ok(()),
-            DataType::Struct(_) => {
-                not_impl_err!("unnest() does not support struct yet")
-            }
+            | DataType::FixedSizeList(_, _)
+            | DataType::Struct(_) => Ok(()),
             DataType::Null => {
                 not_impl_err!("unnest() does not support null yet")
             }

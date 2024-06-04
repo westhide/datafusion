@@ -30,7 +30,7 @@ use std::sync::Arc;
 
 use arrow::datatypes::Schema;
 
-use datafusion_common::{exec_err, not_impl_err, Result};
+use datafusion_common::{exec_err, internal_err, not_impl_err, Result};
 use datafusion_expr::AggregateFunction;
 
 use crate::aggregate::regr::RegrType;
@@ -46,7 +46,7 @@ pub fn create_aggregate_expr(
     ordering_req: &[PhysicalSortExpr],
     input_schema: &Schema,
     name: impl Into<String>,
-    ignore_nulls: bool,
+    _ignore_nulls: bool,
 ) -> Result<Arc<dyn AggregateExpr>> {
     let name = name.into();
     // get the result data type for this aggregate function
@@ -104,16 +104,9 @@ pub fn create_aggregate_expr(
             name,
             data_type,
         )),
-        (AggregateFunction::Sum, false) => Arc::new(expressions::Sum::new(
-            input_phy_exprs[0].clone(),
-            name,
-            input_phy_types[0].clone(),
-        )),
-        (AggregateFunction::Sum, true) => Arc::new(expressions::DistinctSum::new(
-            vec![input_phy_exprs[0].clone()],
-            name,
-            data_type,
-        )),
+        (AggregateFunction::Sum, _) => {
+            return internal_err!("Builtin Sum will be removed");
+        }
         (AggregateFunction::ApproxDistinct, _) => Arc::new(
             expressions::ApproxDistinct::new(input_phy_exprs[0].clone(), name, data_type),
         ),
@@ -332,33 +325,6 @@ pub fn create_aggregate_expr(
                 "APPROX_MEDIAN(DISTINCT) aggregations are not available"
             );
         }
-        (AggregateFunction::Median, distinct) => Arc::new(expressions::Median::new(
-            input_phy_exprs[0].clone(),
-            name,
-            data_type,
-            distinct,
-        )),
-        (AggregateFunction::FirstValue, _) => Arc::new(
-            expressions::FirstValue::new(
-                input_phy_exprs[0].clone(),
-                name,
-                input_phy_types[0].clone(),
-                ordering_req.to_vec(),
-                ordering_types,
-                vec![],
-            )
-            .with_ignore_nulls(ignore_nulls),
-        ),
-        (AggregateFunction::LastValue, _) => Arc::new(
-            expressions::LastValue::new(
-                input_phy_exprs[0].clone(),
-                name,
-                input_phy_types[0].clone(),
-                ordering_req.to_vec(),
-                ordering_types,
-            )
-            .with_ignore_nulls(ignore_nulls),
-        ),
         (AggregateFunction::NthValue, _) => {
             let expr = &input_phy_exprs[0];
             let Some(n) = input_phy_exprs[1]
@@ -402,17 +368,16 @@ pub fn create_aggregate_expr(
 mod tests {
     use arrow::datatypes::{DataType, Field};
 
-    use datafusion_common::{plan_err, DataFusionError, ScalarValue};
-    use datafusion_expr::type_coercion::aggregates::NUMERICS;
-    use datafusion_expr::{type_coercion, Signature};
-
+    use super::*;
     use crate::expressions::{
         try_cast, ApproxDistinct, ApproxMedian, ApproxPercentileCont, ArrayAgg, Avg,
         BitAnd, BitOr, BitXor, BoolAnd, BoolOr, Count, DistinctArrayAgg, DistinctCount,
-        Max, Min, Stddev, Sum, Variance,
+        Max, Min, Stddev, Variance,
     };
 
-    use super::*;
+    use datafusion_common::{plan_err, DataFusionError, ScalarValue};
+    use datafusion_expr::type_coercion::aggregates::NUMERICS;
+    use datafusion_expr::{type_coercion, Signature};
 
     #[test]
     fn test_count_arragg_approx_expr() -> Result<()> {
@@ -718,7 +683,7 @@ mod tests {
 
     #[test]
     fn test_sum_avg_expr() -> Result<()> {
-        let funcs = vec![AggregateFunction::Sum, AggregateFunction::Avg];
+        let funcs = vec![AggregateFunction::Avg];
         let data_types = vec![
             DataType::UInt32,
             DataType::UInt64,
@@ -741,37 +706,13 @@ mod tests {
                     &input_schema,
                     "c1",
                 )?;
-                match fun {
-                    AggregateFunction::Sum => {
-                        assert!(result_agg_phy_exprs.as_any().is::<Sum>());
-                        assert_eq!("c1", result_agg_phy_exprs.name());
-                        let expect_type = match data_type {
-                            DataType::UInt8
-                            | DataType::UInt16
-                            | DataType::UInt32
-                            | DataType::UInt64 => DataType::UInt64,
-                            DataType::Int8
-                            | DataType::Int16
-                            | DataType::Int32
-                            | DataType::Int64 => DataType::Int64,
-                            DataType::Float32 | DataType::Float64 => DataType::Float64,
-                            _ => data_type.clone(),
-                        };
-
-                        assert_eq!(
-                            Field::new("c1", expect_type.clone(), true),
-                            result_agg_phy_exprs.field().unwrap()
-                        );
-                    }
-                    AggregateFunction::Avg => {
-                        assert!(result_agg_phy_exprs.as_any().is::<Avg>());
-                        assert_eq!("c1", result_agg_phy_exprs.name());
-                        assert_eq!(
-                            Field::new("c1", DataType::Float64, true),
-                            result_agg_phy_exprs.field().unwrap()
-                        );
-                    }
-                    _ => {}
+                if fun == AggregateFunction::Avg {
+                    assert!(result_agg_phy_exprs.as_any().is::<Avg>());
+                    assert_eq!("c1", result_agg_phy_exprs.name());
+                    assert_eq!(
+                        Field::new("c1", DataType::Float64, true),
+                        result_agg_phy_exprs.field().unwrap()
+                    );
                 };
             }
         }
@@ -1002,44 +943,6 @@ mod tests {
             AggregateFunction::Max.return_type(&[DataType::Decimal128(28, 13)])?;
         assert_eq!(DataType::Decimal128(28, 13), observed);
 
-        Ok(())
-    }
-
-    #[test]
-    fn test_sum_return_type() -> Result<()> {
-        let observed = AggregateFunction::Sum.return_type(&[DataType::Int32])?;
-        assert_eq!(DataType::Int64, observed);
-
-        let observed = AggregateFunction::Sum.return_type(&[DataType::UInt8])?;
-        assert_eq!(DataType::UInt64, observed);
-
-        let observed = AggregateFunction::Sum.return_type(&[DataType::Float32])?;
-        assert_eq!(DataType::Float64, observed);
-
-        let observed = AggregateFunction::Sum.return_type(&[DataType::Float64])?;
-        assert_eq!(DataType::Float64, observed);
-
-        let observed =
-            AggregateFunction::Sum.return_type(&[DataType::Decimal128(10, 5)])?;
-        assert_eq!(DataType::Decimal128(20, 5), observed);
-
-        let observed =
-            AggregateFunction::Sum.return_type(&[DataType::Decimal128(35, 5)])?;
-        assert_eq!(DataType::Decimal128(38, 5), observed);
-
-        Ok(())
-    }
-
-    #[test]
-    fn test_sum_no_utf8() {
-        let observed = AggregateFunction::Sum.return_type(&[DataType::Utf8]);
-        assert!(observed.is_err());
-    }
-
-    #[test]
-    fn test_sum_upcasts() -> Result<()> {
-        let observed = AggregateFunction::Sum.return_type(&[DataType::UInt32])?;
-        assert_eq!(DataType::UInt64, observed);
         Ok(())
     }
 

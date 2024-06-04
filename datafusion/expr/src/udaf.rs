@@ -22,10 +22,11 @@ use crate::function::{
 };
 use crate::groups_accumulator::GroupsAccumulator;
 use crate::utils::format_state_name;
+use crate::utils::AggregateOrderSensitivity;
 use crate::{Accumulator, Expr};
 use crate::{AccumulatorFactoryFunction, ReturnTypeFunction, Signature};
 use arrow::datatypes::{DataType, Field};
-use datafusion_common::{not_impl_err, Result};
+use datafusion_common::{exec_err, not_impl_err, Result};
 use std::any::Any;
 use std::fmt::{self, Debug, Formatter};
 use std::sync::Arc;
@@ -79,6 +80,12 @@ impl std::hash::Hash for AggregateUDF {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.name().hash(state);
         self.signature().hash(state);
+    }
+}
+
+impl std::fmt::Display for AggregateUDF {
+    fn fmt(&self, f: &mut Formatter) -> fmt::Result {
+        write!(f, "{}", self.name())
     }
 }
 
@@ -189,13 +196,47 @@ impl AggregateUDF {
     }
 
     /// See [`AggregateUDFImpl::create_groups_accumulator`] for more details.
-    pub fn create_groups_accumulator(&self) -> Result<Box<dyn GroupsAccumulator>> {
-        self.inner.create_groups_accumulator()
+    pub fn create_groups_accumulator(
+        &self,
+        args: AccumulatorArgs,
+    ) -> Result<Box<dyn GroupsAccumulator>> {
+        self.inner.create_groups_accumulator(args)
     }
 
-    pub fn coerce_types(&self, _args: &[DataType]) -> Result<Vec<DataType>> {
-        not_impl_err!("coerce_types not implemented for {:?} yet", self.name())
+    pub fn create_sliding_accumulator(
+        &self,
+        args: AccumulatorArgs,
+    ) -> Result<Box<dyn Accumulator>> {
+        self.inner.create_sliding_accumulator(args)
     }
+
+    pub fn coerce_types(&self, arg_types: &[DataType]) -> Result<Vec<DataType>> {
+        self.inner.coerce_types(arg_types)
+    }
+
+    /// See [`AggregateUDFImpl::with_beneficial_ordering`] for more details.
+    pub fn with_beneficial_ordering(
+        self,
+        beneficial_ordering: bool,
+    ) -> Result<Option<AggregateUDF>> {
+        self.inner
+            .with_beneficial_ordering(beneficial_ordering)
+            .map(|updated_udf| updated_udf.map(|udf| Self { inner: udf }))
+    }
+
+    /// Gets the order sensitivity of the UDF. See [`AggregateOrderSensitivity`]
+    /// for possible options.
+    pub fn order_sensitivity(&self) -> AggregateOrderSensitivity {
+        self.inner.order_sensitivity()
+    }
+
+    /// Reserves the `AggregateUDF` (e.g. returns the `AggregateUDF` that will
+    /// generate same result with this `AggregateUDF` when iterated in reverse
+    /// order, and `None` if there is no such `AggregateUDF`).
+    pub fn reverse_udf(&self) -> ReversedUDAF {
+        self.inner.reverse_expr()
+    }
+
     /// Do the function rewrite
     ///
     /// See [`AggregateUDFImpl::simplify`] for more details.
@@ -298,7 +339,8 @@ pub trait AggregateUDFImpl: Debug + Send + Sync {
     ///
     /// # Arguments:
     /// 1. `name`: the name of the expression (e.g. AVG, SUM, etc)
-    /// 2. `value_type`: Aggregate's aggregate's output (returned by [`Self::return_type`])
+    /// 2. `value_type`: Aggregate function output returned by [`Self::return_type`] if defined, otherwise
+    /// it is equivalent to the data type of the first arguments
     /// 3. `ordering_fields`: the fields used to order the input arguments, if any.
     ///     Empty if no ordering expression is provided.
     ///
@@ -348,7 +390,10 @@ pub trait AggregateUDFImpl: Debug + Send + Sync {
     ///
     /// For maximum performance, a [`GroupsAccumulator`] should be
     /// implemented in addition to [`Accumulator`].
-    fn create_groups_accumulator(&self) -> Result<Box<dyn GroupsAccumulator>> {
+    fn create_groups_accumulator(
+        &self,
+        _args: AccumulatorArgs,
+    ) -> Result<Box<dyn GroupsAccumulator>> {
         not_impl_err!("GroupsAccumulator hasn't been implemented for {self:?} yet")
     }
 
@@ -358,6 +403,52 @@ pub trait AggregateUDFImpl: Debug + Send + Sync {
     /// Defaults to `[]` (no aliases)
     fn aliases(&self) -> &[String] {
         &[]
+    }
+
+    /// Sliding accumulator is an alternative accumulator that can be used for
+    /// window functions. It has retract method to revert the previous update.
+    ///
+    /// See [retract_batch] for more details.
+    ///
+    /// [retract_batch]: crate::accumulator::Accumulator::retract_batch
+    fn create_sliding_accumulator(
+        &self,
+        args: AccumulatorArgs,
+    ) -> Result<Box<dyn Accumulator>> {
+        self.accumulator(args)
+    }
+
+    /// Sets the indicator whether ordering requirements of the AggregateUDFImpl is
+    /// satisfied by its input. If this is not the case, UDFs with order
+    /// sensitivity `AggregateOrderSensitivity::Beneficial` can still produce
+    /// the correct result with possibly more work internally.
+    ///
+    /// # Returns
+    ///
+    /// Returns `Ok(Some(updated_udf))` if the process completes successfully.
+    /// If the expression can benefit from existing input ordering, but does
+    /// not implement the method, returns an error. Order insensitive and hard
+    /// requirement aggregators return `Ok(None)`.
+    fn with_beneficial_ordering(
+        self: Arc<Self>,
+        _beneficial_ordering: bool,
+    ) -> Result<Option<Arc<dyn AggregateUDFImpl>>> {
+        if self.order_sensitivity().is_beneficial() {
+            return exec_err!(
+                "Should implement with satisfied for aggregator :{:?}",
+                self.name()
+            );
+        }
+        Ok(None)
+    }
+
+    /// Gets the order sensitivity of the UDF. See [`AggregateOrderSensitivity`]
+    /// for possible options.
+    fn order_sensitivity(&self) -> AggregateOrderSensitivity {
+        // We have hard ordering requirements by default, meaning that order
+        // sensitive UDFs need their input orderings to satisfy their ordering
+        // requirements to generate correct results.
+        AggregateOrderSensitivity::HardRequirement
     }
 
     /// Optionally apply per-UDaF simplification / rewrite rules.
@@ -389,6 +480,29 @@ pub trait AggregateUDFImpl: Debug + Send + Sync {
     fn reverse_expr(&self) -> ReversedUDAF {
         ReversedUDAF::NotSupported
     }
+
+    /// Coerce arguments of a function call to types that the function can evaluate.
+    ///
+    /// This function is only called if [`AggregateUDFImpl::signature`] returns [`crate::TypeSignature::UserDefined`]. Most
+    /// UDAFs should return one of the other variants of `TypeSignature` which handle common
+    /// cases
+    ///
+    /// See the [type coercion module](crate::type_coercion)
+    /// documentation for more details on type coercion
+    ///
+    /// For example, if your function requires a floating point arguments, but the user calls
+    /// it like `my_func(1::int)` (aka with `1` as an integer), coerce_types could return `[DataType::Float64]`
+    /// to ensure the argument was cast to `1::double`
+    ///
+    /// # Parameters
+    /// * `arg_types`: The argument types of the arguments  this function with
+    ///
+    /// # Return value
+    /// A Vec the same length as `arg_types`. DataFusion will `CAST` the function call
+    /// arguments to these specific types.
+    fn coerce_types(&self, _arg_types: &[DataType]) -> Result<Vec<DataType>> {
+        not_impl_err!("Function {} does not implement coerce_types", self.name())
+    }
 }
 
 pub enum ReversedUDAF {
@@ -397,7 +511,7 @@ pub enum ReversedUDAF {
     /// The expression does not support reverse calculation, like ArrayAgg
     NotSupported,
     /// The expression is different from the original expression
-    Reversed(Arc<dyn AggregateUDFImpl>),
+    Reversed(Arc<AggregateUDF>),
 }
 
 /// AggregateUDF that adds an alias to the underlying function. It is better to

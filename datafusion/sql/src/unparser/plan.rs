@@ -16,8 +16,10 @@
 // under the License.
 
 use datafusion_common::{internal_err, not_impl_err, plan_err, DataFusionError, Result};
-use datafusion_expr::{expr::Alias, Expr, JoinConstraint, JoinType, LogicalPlan};
-use sqlparser::ast::{self};
+use datafusion_expr::{
+    expr::Alias, Distinct, Expr, JoinConstraint, JoinType, LogicalPlan, Projection,
+};
+use sqlparser::ast::{self, SetExpr};
 
 use crate::unparser::utils::unproject_agg_exprs;
 
@@ -26,7 +28,7 @@ use super::{
         BuilderError, DerivedRelationBuilder, QueryBuilder, RelationBuilder,
         SelectBuilder, TableRelationBuilder, TableWithJoinsBuilder,
     },
-    utils::find_agg_node_within_select,
+    utils::{find_agg_node_within_select, unproject_window_exprs, AggVariant},
     Unparser,
 };
 
@@ -52,7 +54,7 @@ use super::{
 ///     .unwrap();
 /// let sql = plan_to_sql(&plan).unwrap();
 ///
-/// assert_eq!(format!("{}", sql), "SELECT \"table\".\"id\", \"table\".\"value\" FROM \"table\"")
+/// assert_eq!(format!("{}", sql), "SELECT \"table\".id, \"table\".\"value\" FROM \"table\"")
 /// ```
 pub fn plan_to_sql(plan: &LogicalPlan) -> Result<ast::Statement> {
     let unparser = Unparser::default();
@@ -78,7 +80,7 @@ impl Unparser<'_> {
             | LogicalPlan::Limit(_)
             | LogicalPlan::Statement(_)
             | LogicalPlan::Values(_)
-            | LogicalPlan::Distinct(_) => self.select_to_sql(plan),
+            | LogicalPlan::Distinct(_) => self.select_to_sql_statement(plan),
             LogicalPlan::Dml(_) => self.dml_to_sql(plan),
             LogicalPlan::Explain(_)
             | LogicalPlan::Analyze(_)
@@ -92,32 +94,128 @@ impl Unparser<'_> {
         }
     }
 
-    fn select_to_sql(&self, plan: &LogicalPlan) -> Result<ast::Statement> {
-        let mut query_builder = QueryBuilder::default();
+    fn select_to_sql_statement(&self, plan: &LogicalPlan) -> Result<ast::Statement> {
+        let mut query_builder = Some(QueryBuilder::default());
+
+        let body = self.select_to_sql_expr(plan, &mut query_builder)?;
+
+        let query = query_builder.unwrap().body(Box::new(body)).build()?;
+
+        Ok(ast::Statement::Query(Box::new(query)))
+    }
+
+    fn select_to_sql_expr(
+        &self,
+        plan: &LogicalPlan,
+        query: &mut Option<QueryBuilder>,
+    ) -> Result<ast::SetExpr> {
         let mut select_builder = SelectBuilder::default();
         select_builder.push_from(TableWithJoinsBuilder::default());
         let mut relation_builder = RelationBuilder::default();
         self.select_to_sql_recursively(
             plan,
-            &mut query_builder,
+            query,
             &mut select_builder,
             &mut relation_builder,
         )?;
+
+        // If we were able to construct a full body (i.e. UNION ALL), return it
+        if let Some(body) = query.as_mut().and_then(|q| q.take_body()) {
+            return Ok(*body);
+        }
 
         let mut twj = select_builder.pop_from().unwrap();
         twj.relation(relation_builder);
         select_builder.push_from(twj);
 
-        let body = ast::SetExpr::Select(Box::new(select_builder.build()?));
-        let query = query_builder.body(Box::new(body)).build()?;
+        Ok(ast::SetExpr::Select(Box::new(select_builder.build()?)))
+    }
 
-        Ok(ast::Statement::Query(Box::new(query)))
+    /// Reconstructs a SELECT SQL statement from a logical plan by unprojecting column expressions
+    /// found in a [Projection] node. This requires scanning the plan tree for relevant Aggregate
+    /// and Window nodes and matching column expressions to the appropriate agg or window expressions.
+    fn reconstruct_select_statement(
+        &self,
+        plan: &LogicalPlan,
+        p: &Projection,
+        select: &mut SelectBuilder,
+    ) -> Result<()> {
+        match find_agg_node_within_select(plan, None, true) {
+            Some(AggVariant::Aggregate(agg)) => {
+                let items = p
+                    .expr
+                    .iter()
+                    .map(|proj_expr| {
+                        let unproj = unproject_agg_exprs(proj_expr, agg)?;
+                        self.select_item_to_sql(&unproj)
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+
+                select.projection(items);
+                select.group_by(ast::GroupByExpr::Expressions(
+                    agg.group_expr
+                        .iter()
+                        .map(|expr| self.expr_to_sql(expr))
+                        .collect::<Result<Vec<_>>>()?,
+                ));
+            }
+            Some(AggVariant::Window(window)) => {
+                let items = p
+                    .expr
+                    .iter()
+                    .map(|proj_expr| {
+                        let unproj = unproject_window_exprs(proj_expr, &window)?;
+                        self.select_item_to_sql(&unproj)
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+
+                select.projection(items);
+            }
+            None => {
+                let items = p
+                    .expr
+                    .iter()
+                    .map(|e| self.select_item_to_sql(e))
+                    .collect::<Result<Vec<_>>>()?;
+                select.projection(items);
+            }
+        }
+        Ok(())
+    }
+
+    fn projection_to_sql(
+        &self,
+        plan: &LogicalPlan,
+        p: &Projection,
+        query: &mut Option<QueryBuilder>,
+        select: &mut SelectBuilder,
+        relation: &mut RelationBuilder,
+    ) -> Result<()> {
+        // A second projection implies a derived tablefactor
+        if !select.already_projected() {
+            self.reconstruct_select_statement(plan, p, select)?;
+            self.select_to_sql_recursively(p.input.as_ref(), query, select, relation)
+        } else {
+            let mut derived_builder = DerivedRelationBuilder::default();
+            derived_builder.lateral(false).alias(None).subquery({
+                let inner_statment = self.plan_to_sql(plan)?;
+                if let ast::Statement::Query(inner_query) = inner_statment {
+                    inner_query
+                } else {
+                    return internal_err!(
+                        "Subquery must be a Query, but found {inner_statment:?}"
+                    );
+                }
+            });
+            relation.derived(derived_builder);
+            Ok(())
+        }
     }
 
     fn select_to_sql_recursively(
         &self,
         plan: &LogicalPlan,
-        query: &mut QueryBuilder,
+        query: &mut Option<QueryBuilder>,
         select: &mut SelectBuilder,
         relation: &mut RelationBuilder,
     ) -> Result<()> {
@@ -125,69 +223,28 @@ impl Unparser<'_> {
             LogicalPlan::TableScan(scan) => {
                 let mut builder = TableRelationBuilder::default();
                 let mut table_parts = vec![];
-                if let Some(schema_name) = scan.table_name.schema() {
-                    table_parts.push(self.new_ident(schema_name.to_string()));
+                if let Some(catalog_name) = scan.table_name.catalog() {
+                    table_parts
+                        .push(self.new_ident_quoted_if_needs(catalog_name.to_string()));
                 }
-                table_parts.push(self.new_ident(scan.table_name.table().to_string()));
+                if let Some(schema_name) = scan.table_name.schema() {
+                    table_parts
+                        .push(self.new_ident_quoted_if_needs(schema_name.to_string()));
+                }
+                table_parts.push(
+                    self.new_ident_quoted_if_needs(scan.table_name.table().to_string()),
+                );
                 builder.name(ast::ObjectName(table_parts));
                 relation.table(builder);
 
                 Ok(())
             }
             LogicalPlan::Projection(p) => {
-                // A second projection implies a derived tablefactor
-                if !select.already_projected() {
-                    // Special handling when projecting an agregation plan
-                    if let Some(agg) = find_agg_node_within_select(plan, true) {
-                        let items = p
-                            .expr
-                            .iter()
-                            .map(|proj_expr| {
-                                let unproj = unproject_agg_exprs(proj_expr, agg)?;
-                                self.select_item_to_sql(&unproj)
-                            })
-                            .collect::<Result<Vec<_>>>()?;
-
-                        select.projection(items);
-                        select.group_by(ast::GroupByExpr::Expressions(
-                            agg.group_expr
-                                .iter()
-                                .map(|expr| self.expr_to_sql(expr))
-                                .collect::<Result<Vec<_>>>()?,
-                        ));
-                    } else {
-                        let items = p
-                            .expr
-                            .iter()
-                            .map(|e| self.select_item_to_sql(e))
-                            .collect::<Result<Vec<_>>>()?;
-                        select.projection(items);
-                    }
-                    self.select_to_sql_recursively(
-                        p.input.as_ref(),
-                        query,
-                        select,
-                        relation,
-                    )
-                } else {
-                    let mut derived_builder = DerivedRelationBuilder::default();
-                    derived_builder.lateral(false).alias(None).subquery({
-                        let inner_statment = self.plan_to_sql(plan)?;
-                        if let ast::Statement::Query(inner_query) = inner_statment {
-                            inner_query
-                        } else {
-                            return internal_err!(
-                                "Subquery must be a Query, but found {inner_statment:?}"
-                            );
-                        }
-                    });
-                    relation.derived(derived_builder);
-                    Ok(())
-                }
+                self.projection_to_sql(plan, p, query, select, relation)
             }
             LogicalPlan::Filter(filter) => {
-                if let Some(agg) =
-                    find_agg_node_within_select(plan, select.already_projected())
+                if let Some(AggVariant::Aggregate(agg)) =
+                    find_agg_node_within_select(plan, None, select.already_projected())
                 {
                     let unprojected = unproject_agg_exprs(&filter.predicate, agg)?;
                     let filter_expr = self.expr_to_sql(&unprojected)?;
@@ -206,6 +263,11 @@ impl Unparser<'_> {
             }
             LogicalPlan::Limit(limit) => {
                 if let Some(fetch) = limit.fetch {
+                    let Some(query) = query.as_mut() else {
+                        return internal_err!(
+                            "Limit operator only valid in a statement context."
+                        );
+                    };
                     query.limit(Some(ast::Expr::Value(ast::Value::Number(
                         fetch.to_string(),
                         false,
@@ -220,7 +282,13 @@ impl Unparser<'_> {
                 )
             }
             LogicalPlan::Sort(sort) => {
-                query.order_by(self.sort_to_sql(sort.expr.clone())?);
+                if let Some(query_ref) = query {
+                    query_ref.order_by(self.sort_to_sql(sort.expr.clone())?);
+                } else {
+                    return internal_err!(
+                        "Sort operator only valid in a statement context."
+                    );
+                }
 
                 self.select_to_sql_recursively(
                     sort.input.as_ref(),
@@ -230,7 +298,7 @@ impl Unparser<'_> {
                 )
             }
             LogicalPlan::Aggregate(agg) => {
-                // Aggregate nodes are handled simulatenously with Projection nodes
+                // Aggregate nodes are handled simultaneously with Projection nodes
                 self.select_to_sql_recursively(
                     agg.input.as_ref(),
                     query,
@@ -238,8 +306,39 @@ impl Unparser<'_> {
                     relation,
                 )
             }
-            LogicalPlan::Distinct(_distinct) => {
-                not_impl_err!("Unsupported operator: {plan:?}")
+            LogicalPlan::Distinct(distinct) => {
+                let (select_distinct, input) = match distinct {
+                    Distinct::All(input) => (ast::Distinct::Distinct, input.as_ref()),
+                    Distinct::On(on) => {
+                        let exprs = on
+                            .on_expr
+                            .iter()
+                            .map(|e| self.expr_to_sql(e))
+                            .collect::<Result<Vec<_>>>()?;
+                        let items = on
+                            .select_expr
+                            .iter()
+                            .map(|e| self.select_item_to_sql(e))
+                            .collect::<Result<Vec<_>>>()?;
+                        match &on.sort_expr {
+                            Some(sort_expr) => {
+                                if let Some(query_ref) = query {
+                                    query_ref
+                                        .order_by(self.sort_to_sql(sort_expr.clone())?);
+                                } else {
+                                    return internal_err!(
+                                "Sort operator only valid in a statement context."
+                            );
+                                }
+                            }
+                            None => {}
+                        }
+                        select.projection(items);
+                        (ast::Distinct::On(exprs), on.input.as_ref())
+                    }
+                };
+                select.distinct(Some(select_distinct));
+                self.select_to_sql_recursively(input, query, select, relation)
             }
             LogicalPlan::Join(join) => {
                 match join.join_constraint {
@@ -347,11 +446,42 @@ impl Unparser<'_> {
 
                 Ok(())
             }
-            LogicalPlan::Union(_union) => {
-                not_impl_err!("Unsupported operator: {plan:?}")
+            LogicalPlan::Union(union) => {
+                if union.inputs.len() != 2 {
+                    return not_impl_err!(
+                        "UNION ALL expected 2 inputs, but found {}",
+                        union.inputs.len()
+                    );
+                }
+
+                let input_exprs: Vec<SetExpr> = union
+                    .inputs
+                    .iter()
+                    .map(|input| self.select_to_sql_expr(input, &mut None))
+                    .collect::<Result<Vec<_>>>()?;
+
+                let union_expr = ast::SetExpr::SetOperation {
+                    op: ast::SetOperator::Union,
+                    set_quantifier: ast::SetQuantifier::All,
+                    left: Box::new(input_exprs[0].clone()),
+                    right: Box::new(input_exprs[1].clone()),
+                };
+
+                query
+                    .as_mut()
+                    .expect("to have a query builder")
+                    .body(Box::new(union_expr));
+
+                Ok(())
             }
-            LogicalPlan::Window(_window) => {
-                not_impl_err!("Unsupported operator: {plan:?}")
+            LogicalPlan::Window(window) => {
+                // Window nodes are handled simultaneously with Projection nodes
+                self.select_to_sql_recursively(
+                    window.input.as_ref(),
+                    query,
+                    select,
+                    relation,
+                )
             }
             LogicalPlan::Extension(_) => not_impl_err!("Unsupported operator: {plan:?}"),
             _ => not_impl_err!("Unsupported operator: {plan:?}"),
@@ -365,7 +495,7 @@ impl Unparser<'_> {
 
                 Ok(ast::SelectItem::ExprWithAlias {
                     expr: inner,
-                    alias: self.new_ident(name.to_string()),
+                    alias: self.new_ident_quoted_if_needs(name.to_string()),
                 })
             }
             _ => {
@@ -382,10 +512,17 @@ impl Unparser<'_> {
             .map(|expr: &Expr| match expr {
                 Expr::Sort(sort_expr) => {
                     let col = self.expr_to_sql(&sort_expr.expr)?;
+
+                    let nulls_first = if self.dialect.supports_nulls_first_in_sort() {
+                        Some(sort_expr.nulls_first)
+                    } else {
+                        None
+                    };
+
                     Ok(ast::OrderByExpr {
                         asc: Some(sort_expr.asc),
                         expr: col,
-                        nulls_first: Some(sort_expr.nulls_first),
+                        nulls_first,
                     })
                 }
                 _ => plan_err!("Expecting Sort expr"),
@@ -436,7 +573,7 @@ impl Unparser<'_> {
 
     fn new_table_alias(&self, alias: String) -> ast::TableAlias {
         ast::TableAlias {
-            name: self.new_ident(alias),
+            name: self.new_ident_quoted_if_needs(alias),
             columns: Vec::new(),
         }
     }

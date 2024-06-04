@@ -402,7 +402,7 @@ impl<'a> TreeNodeRewriter for TypeCoercionRewriter<'a> {
                         expr::AggregateFunction::new_udf(
                             fun,
                             new_expr,
-                            false,
+                            distinct,
                             filter,
                             order_by,
                             null_treatment,
@@ -430,6 +430,13 @@ impl<'a> TreeNodeRewriter for TypeCoercionRewriter<'a> {
                             &fun.signature(),
                         )?
                     }
+                    expr::WindowFunctionDefinition::AggregateUDF(udf) => {
+                        coerce_arguments_for_signature_with_aggregate_udf(
+                            args,
+                            self.schema,
+                            udf,
+                        )?
+                    }
                     _ => args,
                 };
 
@@ -450,7 +457,6 @@ impl<'a> TreeNodeRewriter for TypeCoercionRewriter<'a> {
             | Expr::IsNotNull(_)
             | Expr::IsNull(_)
             | Expr::Negative(_)
-            | Expr::GetIndexedField(_)
             | Expr::Cast(_)
             | Expr::TryCast(_)
             | Expr::Sort(_)
@@ -986,13 +992,10 @@ mod test {
             None,
             None,
         ));
-        let plan = LogicalPlan::Projection(Projection::try_new(vec![udaf], empty)?);
-        let err = assert_analyzed_plan_eq(Arc::new(TypeCoercion::new()), plan, "")
-            .err()
-            .unwrap();
-        assert_eq!(
-            "type_coercion\ncaused by\nError during planning: [data_types_with_aggregate_udf] Coercion from [Utf8] to the signature Uniform(1, [Float64]) failed.",
-            err.strip_backtrace()
+
+        let err = Projection::try_new(vec![udaf], empty).err().unwrap();
+        assert!(
+            err.strip_backtrace().starts_with("Error during planning: Error during planning: Coercion from [Utf8] to the signature Uniform(1, [Float64]) failed")
         );
         Ok(())
     }

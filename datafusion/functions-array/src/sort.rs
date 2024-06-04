@@ -47,7 +47,7 @@ impl ArraySort {
     pub fn new() -> Self {
         Self {
             signature: Signature::variadic_any(Volatility::Immutable),
-            aliases: vec!["array_sort".to_string(), "list_sort".to_string()],
+            aliases: vec!["list_sort".to_string()],
         }
     }
 }
@@ -120,6 +120,9 @@ pub fn array_sort_inner(args: &[ArrayRef]) -> Result<ArrayRef> {
 
     let list_array = as_list_array(&args[0])?;
     let row_count = list_array.len();
+    if row_count == 0 {
+        return Ok(args[0].clone());
+    }
 
     let mut array_lengths = vec![];
     let mut arrays = vec![];

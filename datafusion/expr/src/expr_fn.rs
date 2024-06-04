@@ -19,7 +19,7 @@
 
 use crate::expr::{
     AggregateFunction, BinaryExpr, Cast, Exists, GroupingSet, InList, InSubquery,
-    Placeholder, TryCast,
+    Placeholder, TryCast, Unnest,
 };
 use crate::function::{
     AccumulatorArgs, AccumulatorFactoryFunction, PartitionEvaluatorFactory,
@@ -169,6 +169,8 @@ pub fn max(expr: Expr) -> Expr {
 }
 
 /// Create an expression to represent the sum() aggregate function
+///
+/// TODO: Remove this function and use `sum` from `datafusion_functions_aggregate::expr_fn` instead
 pub fn sum(expr: Expr) -> Expr {
     Expr::AggregateFunction(AggregateFunction::new(
         aggregate_function::AggregateFunction::Sum,
@@ -288,18 +290,6 @@ pub fn in_list(expr: Expr, list: Vec<Expr>, negated: bool) -> Expr {
 pub fn approx_distinct(expr: Expr) -> Expr {
     Expr::AggregateFunction(AggregateFunction::new(
         aggregate_function::AggregateFunction::ApproxDistinct,
-        vec![expr],
-        false,
-        None,
-        None,
-        None,
-    ))
-}
-
-/// Calculate the median for `expr`.
-pub fn median(expr: Expr) -> Expr {
-    Expr::AggregateFunction(AggregateFunction::new(
-        aggregate_function::AggregateFunction::Median,
         vec![expr],
         false,
         None,
@@ -487,6 +477,13 @@ pub fn case(expr: Expr) -> CaseBuilder {
 /// Create a CASE WHEN statement with boolean WHEN expressions and no base expression.
 pub fn when(when: Expr, then: Expr) -> CaseBuilder {
     CaseBuilder::new(None, vec![when], vec![then], None)
+}
+
+/// Create a Unnest expression
+pub fn unnest(expr: Expr) -> Expr {
+    Expr::Unnest(Unnest {
+        expr: Box::new(expr),
+    })
 }
 
 /// Convenience method to create a new user defined scalar function (UDF) with a

@@ -36,25 +36,31 @@
 ///    ]
 /// }
 /// ```
+///
+/// Exported functions accept:
+/// - `Vec<Expr>` argument (single argument followed by a comma)
+/// - Variable number of `Expr` arguments (zero or more arguments, must be without commas)
 macro_rules! export_functions {
-    ($(($FUNC:ident,  $($arg:ident)*, $DOC:expr)),*) => {
-        pub mod expr_fn {
-            $(
-                #[doc = $DOC]
-                /// Return $name(arg)
-                pub fn $FUNC($($arg: datafusion_expr::Expr),*) -> datafusion_expr::Expr {
-                    super::$FUNC().call(vec![$($arg),*],)
-                }
-            )*
-        }
+    ($(($FUNC:ident, $DOC:expr, $($arg:tt)*)),*) => {
+        $(
+            // switch to single-function cases below
+            export_functions!(single $FUNC, $DOC, $($arg)*);
+        )*
+    };
 
-        /// Return a list of all functions in this package
-        pub fn functions() -> Vec<std::sync::Arc<datafusion_expr::ScalarUDF>> {
-            vec![
-                $(
-                    $FUNC(),
-                )*
-            ]
+    // single vector argument (a single argument followed by a comma)
+    (single $FUNC:ident, $DOC:expr, $arg:ident,) => {
+        #[doc = $DOC]
+        pub fn $FUNC($arg: Vec<datafusion_expr::Expr>) -> datafusion_expr::Expr {
+            super::$FUNC().call($arg)
+        }
+    };
+
+    // variadic arguments (zero or more arguments, without commas)
+    (single $FUNC:ident, $DOC:expr, $($arg:ident)*) => {
+        #[doc = $DOC]
+        pub fn $FUNC($($arg: datafusion_expr::Expr),*) -> datafusion_expr::Expr {
+            super::$FUNC().call(vec![$($arg),*])
         }
     };
 }
@@ -154,9 +160,9 @@ macro_rules! downcast_arg {
 /// $GNAME: a singleton instance of the UDF
 /// $NAME: the name of the function
 /// $UNARY_FUNC: the unary function to apply to the argument
-/// $MONOTONIC_FUNC: the monotonicity of the function
+/// $OUTPUT_ORDERING: the output ordering calculation method of the function
 macro_rules! make_math_unary_udf {
-    ($UDF:ident, $GNAME:ident, $NAME:ident, $UNARY_FUNC:ident, $MONOTONICITY:expr) => {
+    ($UDF:ident, $GNAME:ident, $NAME:ident, $UNARY_FUNC:ident, $OUTPUT_ORDERING:expr) => {
         make_udf_function!($NAME::$UDF, $GNAME, $NAME);
 
         mod $NAME {
@@ -209,11 +215,11 @@ macro_rules! make_math_unary_udf {
                     }
                 }
 
-                fn monotonicity(
+                fn output_ordering(
                     &self,
                     input: &[ExprProperties],
                 ) -> Result<SortProperties> {
-                    $MONOTONICITY(input)
+                    $OUTPUT_ORDERING(input)
                 }
 
                 fn invoke(&self, args: &[ColumnarValue]) -> Result<ColumnarValue> {
@@ -261,9 +267,9 @@ macro_rules! make_math_unary_udf {
 /// $GNAME: a singleton instance of the UDF
 /// $NAME: the name of the function
 /// $BINARY_FUNC: the binary function to apply to the argument
-/// $MONOTONIC_FUNC: the monotonicity of the function
+/// $OUTPUT_ORDERING: the output ordering calculation method of the function
 macro_rules! make_math_binary_udf {
-    ($UDF:ident, $GNAME:ident, $NAME:ident, $BINARY_FUNC:ident, $MONOTONICITY:expr) => {
+    ($UDF:ident, $GNAME:ident, $NAME:ident, $BINARY_FUNC:ident, $OUTPUT_ORDERING:expr) => {
         make_udf_function!($NAME::$UDF, $GNAME, $NAME);
 
         mod $NAME {
@@ -319,11 +325,11 @@ macro_rules! make_math_binary_udf {
                     }
                 }
 
-                fn monotonicity(
+                fn output_ordering(
                     &self,
                     input: &[ExprProperties],
                 ) -> Result<SortProperties> {
-                    $MONOTONICITY(input)
+                    $OUTPUT_ORDERING(input)
                 }
 
                 fn invoke(&self, args: &[ColumnarValue]) -> Result<ColumnarValue> {
