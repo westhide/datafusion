@@ -16,6 +16,8 @@
 // under the License.
 
 pub mod aggregate;
+pub mod binary_map;
+pub mod datum;
 pub mod expressions;
 pub mod physical_expr;
 pub mod sort_expr;

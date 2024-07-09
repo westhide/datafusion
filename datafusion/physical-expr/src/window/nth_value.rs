@@ -116,7 +116,7 @@ impl BuiltInWindowFunctionExpr for NthValue {
     }
 
     fn expressions(&self) -> Vec<Arc<dyn PhysicalExpr>> {
-        vec![self.expr.clone()]
+        vec![Arc::clone(&self.expr)]
     }
 
     fn name(&self) -> &str {
@@ -125,7 +125,6 @@ impl BuiltInWindowFunctionExpr for NthValue {
 
     fn create_evaluator(&self) -> Result<Box<dyn PartitionEvaluator>> {
         let state = NthValueState {
-            range: Default::default(),
             finalized_result: None,
             kind: self.kind,
         };
@@ -143,7 +142,7 @@ impl BuiltInWindowFunctionExpr for NthValue {
         };
         Some(Arc::new(Self {
             name: self.name.clone(),
-            expr: self.expr.clone(),
+            expr: Arc::clone(&self.expr),
             data_type: self.data_type.clone(),
             kind: reversed_kind,
             ignore_nulls: self.ignore_nulls,

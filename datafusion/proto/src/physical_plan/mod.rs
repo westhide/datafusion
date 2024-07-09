@@ -203,6 +203,14 @@ impl AsExecutionPlan for protobuf::PhysicalPlanNode {
                 } else {
                     None
                 },
+                if let Some(protobuf::csv_scan_exec_node::OptionalComment::Comment(
+                    comment,
+                )) = &scan.optional_comment
+                {
+                    Some(str_to_byte(comment, "comment")?)
+                } else {
+                    None
+                },
                 FileCompressionType::UNCOMPRESSED,
             ))),
             #[cfg(feature = "parquet")]
@@ -488,11 +496,14 @@ impl AsExecutionPlan for protobuf::PhysicalPlanNode {
                                         }
                                         AggregateFunction::UserDefinedAggrFunction(udaf_name) => {
                                             let agg_udf = registry.udaf(udaf_name)?;
+                                            // TODO: 'logical_exprs' is not supported for UDAF yet.
+                                            // approx_percentile_cont and approx_percentile_cont_weight are not supported for UDAF from protobuf yet.
+                                            let logical_exprs = &[];
                                             // TODO: `order by` is not supported for UDAF yet
                                             let sort_exprs = &[];
                                             let ordering_req = &[];
                                             let ignore_nulls = false;
-                                            udaf::create_aggregate_expr(agg_udf.as_ref(), &input_phy_expr, sort_exprs, ordering_req, &physical_schema, name, ignore_nulls, false)
+                                            udaf::create_aggregate_expr(agg_udf.as_ref(), &input_phy_expr, logical_exprs, sort_exprs, ordering_req, &physical_schema, name, ignore_nulls, false)
                                         }
                                     }
                                 }).transpose()?.ok_or_else(|| {
@@ -999,7 +1010,7 @@ impl AsExecutionPlan for protobuf::PhysicalPlanNode {
                     .as_ref()
                     .ok_or_else(|| proto_error("Missing required field in protobuf"))?
                     .try_into()?;
-                let sink_schema = convert_required!(sink.sink_schema)?;
+                let sink_schema = input.schema();
                 let sort_order = sink
                     .sort_order
                     .as_ref()
@@ -1016,7 +1027,7 @@ impl AsExecutionPlan for protobuf::PhysicalPlanNode {
                 Ok(Arc::new(DataSinkExec::new(
                     input,
                     Arc::new(data_sink),
-                    Arc::new(sink_schema),
+                    sink_schema,
                     sort_order,
                 )))
             }
@@ -1029,7 +1040,7 @@ impl AsExecutionPlan for protobuf::PhysicalPlanNode {
                     .as_ref()
                     .ok_or_else(|| proto_error("Missing required field in protobuf"))?
                     .try_into()?;
-                let sink_schema = convert_required!(sink.sink_schema)?;
+                let sink_schema = input.schema();
                 let sort_order = sink
                     .sort_order
                     .as_ref()
@@ -1046,7 +1057,7 @@ impl AsExecutionPlan for protobuf::PhysicalPlanNode {
                 Ok(Arc::new(DataSinkExec::new(
                     input,
                     Arc::new(data_sink),
-                    Arc::new(sink_schema),
+                    sink_schema,
                     sort_order,
                 )))
             }
@@ -1059,7 +1070,7 @@ impl AsExecutionPlan for protobuf::PhysicalPlanNode {
                     .as_ref()
                     .ok_or_else(|| proto_error("Missing required field in protobuf"))?
                     .try_into()?;
-                let sink_schema = convert_required!(sink.sink_schema)?;
+                let sink_schema = input.schema();
                 let sort_order = sink
                     .sort_order
                     .as_ref()
@@ -1076,7 +1087,7 @@ impl AsExecutionPlan for protobuf::PhysicalPlanNode {
                 Ok(Arc::new(DataSinkExec::new(
                     input,
                     Arc::new(data_sink),
-                    Arc::new(sink_schema),
+                    sink_schema,
                     sort_order,
                 )))
             }
@@ -1554,6 +1565,13 @@ impl AsExecutionPlan for protobuf::PhysicalPlanNode {
                         optional_escape: if let Some(escape) = exec.escape() {
                             Some(protobuf::csv_scan_exec_node::OptionalEscape::Escape(
                                 byte_to_string(escape, "escape")?,
+                            ))
+                        } else {
+                            None
+                        },
+                        optional_comment: if let Some(comment) = exec.comment() {
+                            Some(protobuf::csv_scan_exec_node::OptionalComment::Comment(
+                                byte_to_string(comment, "comment")?,
                             ))
                         } else {
                             None

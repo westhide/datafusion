@@ -24,8 +24,8 @@ use crate::protobuf_common::{
 use arrow::array::{ArrayRef, RecordBatch};
 use arrow::csv::WriterBuilder;
 use arrow::datatypes::{
-    DataType, Field, IntervalMonthDayNanoType, IntervalUnit, Schema, SchemaRef, TimeUnit,
-    UnionMode,
+    DataType, Field, IntervalDayTimeType, IntervalMonthDayNanoType, IntervalUnit, Schema,
+    SchemaRef, TimeUnit, UnionMode,
 };
 use arrow::ipc::writer::{DictionaryTracker, IpcDataGenerator};
 use datafusion_common::{
@@ -347,6 +347,11 @@ impl TryFrom<&ScalarValue> for protobuf::ScalarValue {
                     Value::LargeUtf8Value(s.to_owned())
                 })
             }
+            ScalarValue::Utf8View(val) => {
+                create_proto_scalar(val.as_ref(), &data_type, |s| {
+                    Value::Utf8ViewValue(s.to_owned())
+                })
+            }
             ScalarValue::List(arr) => {
                 encode_scalar_nested_value(arr.to_owned() as ArrayRef, val)
             }
@@ -357,6 +362,9 @@ impl TryFrom<&ScalarValue> for protobuf::ScalarValue {
                 encode_scalar_nested_value(arr.to_owned() as ArrayRef, val)
             }
             ScalarValue::Struct(arr) => {
+                encode_scalar_nested_value(arr.to_owned() as ArrayRef, val)
+            }
+            ScalarValue::Map(arr) => {
                 encode_scalar_nested_value(arr.to_owned() as ArrayRef, val)
             }
             ScalarValue::Date32(val) => {
@@ -452,11 +460,6 @@ impl TryFrom<&ScalarValue> for protobuf::ScalarValue {
                     Value::IntervalYearmonthValue(*s)
                 })
             }
-            ScalarValue::IntervalDayTime(val) => {
-                create_proto_scalar(val.as_ref(), &data_type, |s| {
-                    Value::IntervalDaytimeValue(*s)
-                })
-            }
             ScalarValue::Null => Ok(protobuf::ScalarValue {
                 value: Some(Value::NullValue((&data_type).try_into()?)),
             }),
@@ -464,6 +467,11 @@ impl TryFrom<&ScalarValue> for protobuf::ScalarValue {
             ScalarValue::Binary(val) => {
                 create_proto_scalar(val.as_ref(), &data_type, |s| {
                     Value::BinaryValue(s.to_owned())
+                })
+            }
+            ScalarValue::BinaryView(val) => {
+                create_proto_scalar(val.as_ref(), &data_type, |s| {
+                    Value::BinaryViewValue(s.to_owned())
                 })
             }
             ScalarValue::LargeBinary(val) => {
@@ -524,6 +532,20 @@ impl TryFrom<&ScalarValue> for protobuf::ScalarValue {
                         ),
                     })
                 })
+            }
+
+            ScalarValue::IntervalDayTime(val) => {
+                let value = if let Some(v) = val {
+                    let (days, milliseconds) = IntervalDayTimeType::to_parts(*v);
+                    Value::IntervalDaytimeValue(protobuf::IntervalDayTimeValue {
+                        days,
+                        milliseconds,
+                    })
+                } else {
+                    Value::NullValue((&data_type).try_into()?)
+                };
+
+                Ok(protobuf::ScalarValue { value: Some(value) })
             }
 
             ScalarValue::IntervalMonthDayNano(v) => {
@@ -877,6 +899,7 @@ impl TryFrom<&CsvOptions> for protobuf::CsvOptions {
             delimiter: vec![opts.delimiter],
             quote: vec![opts.quote],
             escape: opts.escape.map_or_else(Vec::new, |e| vec![e]),
+            double_quote: opts.double_quote.map_or_else(Vec::new, |h| vec![h as u8]),
             compression: compression.into(),
             schema_infer_max_rec: opts.schema_infer_max_rec as u64,
             date_format: opts.date_format.clone().unwrap_or_default(),
@@ -885,6 +908,7 @@ impl TryFrom<&CsvOptions> for protobuf::CsvOptions {
             timestamp_tz_format: opts.timestamp_tz_format.clone().unwrap_or_default(),
             time_format: opts.time_format.clone().unwrap_or_default(),
             null_value: opts.null_value.clone().unwrap_or_default(),
+            comment: opts.comment.map_or_else(Vec::new, |h| vec![h]),
         })
     }
 }
@@ -917,7 +941,7 @@ fn create_proto_scalar<I, T: FnOnce(&I) -> protobuf::scalar_value::Value>(
     Ok(protobuf::ScalarValue { value: Some(value) })
 }
 
-// ScalarValue::List / FixedSizeList / LargeList / Struct are serialized using
+// ScalarValue::List / FixedSizeList / LargeList / Struct / Map are serialized using
 // Arrow IPC messages as a single column RecordBatch
 fn encode_scalar_nested_value(
     arr: ArrayRef,
@@ -971,6 +995,9 @@ fn encode_scalar_nested_value(
                 scalar_list_value,
             )),
         }),
+        ScalarValue::Map(_) => Ok(protobuf::ScalarValue {
+            value: Some(protobuf::scalar_value::Value::MapValue(scalar_list_value)),
+        }),
         _ => unreachable!(),
     }
 }
@@ -1002,5 +1029,8 @@ pub(crate) fn csv_writer_options_to_proto(
         timestamp_format: csv_options.timestamp_format().unwrap_or("").to_owned(),
         time_format: csv_options.time_format().unwrap_or("").to_owned(),
         null_value: csv_options.null().to_owned(),
+        quote: (csv_options.quote() as char).to_string(),
+        escape: (csv_options.escape() as char).to_string(),
+        double_quote: csv_options.double_quote(),
     }
 }

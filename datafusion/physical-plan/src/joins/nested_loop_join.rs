@@ -25,18 +25,19 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::Poll;
 
+use super::utils::{asymmetric_join_output_partitioning, need_produce_result_in_final};
 use crate::coalesce_batches::concat_batches;
 use crate::coalesce_partitions::CoalescePartitionsExec;
 use crate::joins::utils::{
-    adjust_indices_by_join_type, adjust_right_output_partitioning,
-    apply_join_filter_to_indices, build_batch_from_indices, build_join_schema,
-    check_join_is_valid, estimate_join_statistics, get_final_indices_from_bit_map,
-    BuildProbeJoinMetrics, ColumnIndex, JoinFilter, OnceAsync, OnceFut,
+    adjust_indices_by_join_type, apply_join_filter_to_indices, build_batch_from_indices,
+    build_join_schema, check_join_is_valid, estimate_join_statistics,
+    get_final_indices_from_bit_map, BuildProbeJoinMetrics, ColumnIndex, JoinFilter,
+    OnceAsync, OnceFut,
 };
 use crate::metrics::{ExecutionPlanMetricsSet, MetricsSet};
 use crate::{
     execution_mode_from_children, DisplayAs, DisplayFormatType, Distribution,
-    ExecutionMode, ExecutionPlan, ExecutionPlanProperties, Partitioning, PlanProperties,
+    ExecutionMode, ExecutionPlan, ExecutionPlanProperties, PlanProperties,
     RecordBatchStream, SendableRecordBatchStream,
 };
 
@@ -54,8 +55,6 @@ use datafusion_physical_expr::equivalence::join_equivalence_properties;
 
 use futures::{ready, Stream, StreamExt, TryStreamExt};
 use parking_lot::Mutex;
-
-use super::utils::need_produce_result_in_final;
 
 /// Shared bitmap for visited left-side indices
 type SharedBitmapBuilder = Mutex<BooleanBufferBuilder>;
@@ -174,7 +173,8 @@ impl NestedLoopJoinExec {
         let (schema, column_indices) =
             build_join_schema(&left_schema, &right_schema, join_type);
         let schema = Arc::new(schema);
-        let cache = Self::compute_properties(&left, &right, schema.clone(), *join_type);
+        let cache =
+            Self::compute_properties(&left, &right, Arc::clone(&schema), *join_type);
 
         Ok(NestedLoopJoinExec {
             left,
@@ -228,21 +228,8 @@ impl NestedLoopJoinExec {
             &[],
         );
 
-        // Get output partitioning,
-        let output_partitioning = match join_type {
-            JoinType::Inner | JoinType::Right => adjust_right_output_partitioning(
-                right.output_partitioning(),
-                left.schema().fields().len(),
-            ),
-            JoinType::RightSemi | JoinType::RightAnti => {
-                right.output_partitioning().clone()
-            }
-            JoinType::Left | JoinType::LeftSemi | JoinType::LeftAnti | JoinType::Full => {
-                Partitioning::UnknownPartitioning(
-                    right.output_partitioning().partition_count(),
-                )
-            }
-        };
+        let output_partitioning =
+            asymmetric_join_output_partitioning(left, right, &join_type);
 
         // Determine execution mode:
         let mut mode = execution_mode_from_children([left, right]);
@@ -301,8 +288,8 @@ impl ExecutionPlan for NestedLoopJoinExec {
         children: Vec<Arc<dyn ExecutionPlan>>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
         Ok(Arc::new(NestedLoopJoinExec::try_new(
-            children[0].clone(),
-            children[1].clone(),
+            Arc::clone(&children[0]),
+            Arc::clone(&children[1]),
             self.filter.clone(),
             &self.join_type,
         )?))
@@ -322,8 +309,8 @@ impl ExecutionPlan for NestedLoopJoinExec {
 
         let inner_table = self.inner_table.once(|| {
             collect_left_input(
-                self.left.clone(),
-                context.clone(),
+                Arc::clone(&self.left),
+                Arc::clone(&context),
                 join_metrics.clone(),
                 load_reservation,
                 need_produce_result_in_final(self.join_type),
@@ -333,7 +320,7 @@ impl ExecutionPlan for NestedLoopJoinExec {
         let outer_table = self.right.execute(partition, context)?;
 
         Ok(Box::pin(NestedLoopJoinStream {
-            schema: self.schema.clone(),
+            schema: Arc::clone(&self.schema),
             filter: self.filter.clone(),
             join_type: self.join_type,
             outer_table,
@@ -350,8 +337,8 @@ impl ExecutionPlan for NestedLoopJoinExec {
 
     fn statistics(&self) -> Result<Statistics> {
         estimate_join_statistics(
-            self.left.clone(),
-            self.right.clone(),
+            Arc::clone(&self.left),
+            Arc::clone(&self.right),
             vec![],
             &self.join_type,
             &self.schema,
@@ -618,6 +605,7 @@ fn join_left_and_right_batch(
                 right_side,
                 0..right_batch.num_rows(),
                 join_type,
+                false,
             );
 
             build_batch_from_indices(
@@ -655,13 +643,12 @@ impl Stream for NestedLoopJoinStream {
 
 impl RecordBatchStream for NestedLoopJoinStream {
     fn schema(&self) -> SchemaRef {
-        self.schema.clone()
+        Arc::clone(&self.schema)
     }
 }
 
 #[cfg(test)]
 mod tests {
-
     use super::*;
     use crate::{
         common, expressions::Column, memory::MemoryExec, repartition::RepartitionExec,
@@ -673,7 +660,7 @@ mod tests {
     use datafusion_execution::runtime_env::{RuntimeConfig, RuntimeEnv};
     use datafusion_expr::Operator;
     use datafusion_physical_expr::expressions::{BinaryExpr, Literal};
-    use datafusion_physical_expr::PhysicalExpr;
+    use datafusion_physical_expr::{Partitioning, PhysicalExpr};
 
     fn build_table(
         a: (&str, &Vec<i32>),
@@ -766,7 +753,7 @@ mod tests {
         let columns = columns(&nested_loop_join.schema());
         let mut batches = vec![];
         for i in 0..partition_count {
-            let stream = nested_loop_join.execute(i, context.clone())?;
+            let stream = nested_loop_join.execute(i, Arc::clone(&context))?;
             let more_batches = common::collect(stream).await?;
             batches.extend(
                 more_batches
@@ -1051,8 +1038,8 @@ mod tests {
             let task_ctx = Arc::new(task_ctx);
 
             let err = multi_partitioned_join_collect(
-                left.clone(),
-                right.clone(),
+                Arc::clone(&left),
+                Arc::clone(&right),
                 &join_type,
                 Some(filter.clone()),
                 task_ctx,

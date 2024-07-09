@@ -22,13 +22,7 @@ use std::collections::HashMap;
 use std::fmt::Write;
 use std::sync::Arc;
 
-use crate::datasource::file_format::arrow::ArrowFormat;
-use crate::datasource::file_format::avro::AvroFormat;
-use crate::datasource::file_format::csv::CsvFormat;
-use crate::datasource::file_format::json::JsonFormat;
-#[cfg(feature = "parquet")]
-use crate::datasource::file_format::parquet::ParquetFormat;
-use crate::datasource::file_format::FileFormat;
+use crate::datasource::file_format::file_type_to_format;
 use crate::datasource::listing::ListingTableUrl;
 use crate::datasource::physical_plan::FileSinkConfig;
 use crate::datasource::source_as_provider;
@@ -74,11 +68,10 @@ use arrow::compute::SortOptions;
 use arrow::datatypes::{Schema, SchemaRef};
 use arrow_array::builder::StringBuilder;
 use arrow_array::RecordBatch;
-use datafusion_common::config::FormatOptions;
 use datafusion_common::display::ToStringifiedPlan;
 use datafusion_common::{
     exec_err, internal_datafusion_err, internal_err, not_impl_err, plan_err, DFSchema,
-    FileType, ScalarValue,
+    ScalarValue,
 };
 use datafusion_expr::dml::CopyTo;
 use datafusion_expr::expr::{
@@ -156,13 +149,18 @@ fn create_physical_name(e: &Expr, is_first_expr: bool) -> Result<String> {
         Expr::Case(case) => {
             let mut name = "CASE ".to_string();
             if let Some(e) = &case.expr {
-                let _ = write!(name, "{e} ");
+                let _ = write!(name, "{} ", create_physical_name(e, false)?);
             }
             for (w, t) in &case.when_then_expr {
-                let _ = write!(name, "WHEN {w} THEN {t} ");
+                let _ = write!(
+                    name,
+                    "WHEN {} THEN {} ",
+                    create_physical_name(w, false)?,
+                    create_physical_name(t, false)?
+                );
             }
             if let Some(e) = &case.else_expr {
-                let _ = write!(name, "ELSE {e} ");
+                let _ = write!(name, "ELSE {} ", create_physical_name(e, false)?);
             }
             name += "END";
             Ok(name)
@@ -759,7 +757,7 @@ impl DefaultPhysicalPlanner {
             LogicalPlan::Copy(CopyTo {
                 input,
                 output_url,
-                format_options,
+                file_type,
                 partition_by,
                 options: source_option_tuples,
             }) => {
@@ -777,6 +775,16 @@ impl DefaultPhysicalPlanner {
                     .map(|s| (s.to_string(), arrow_schema::DataType::Null))
                     .collect::<Vec<_>>();
 
+                let keep_partition_by_columns = match source_option_tuples
+                    .get("execution.keep_partition_by_columns")
+                    .map(|v| v.trim()) {
+                    None => session_state.config().options().execution.keep_partition_by_columns,
+                    Some("true") => true,
+                    Some("false") => false,
+                    Some(value) =>
+                        return Err(DataFusionError::Configuration(format!("provided value for 'execution.keep_partition_by_columns' was not recognized: \"{}\"", value))),
+                };
+
                 // Set file sink related options
                 let config = FileSinkConfig {
                     object_store_url,
@@ -785,33 +793,11 @@ impl DefaultPhysicalPlanner {
                     output_schema: Arc::new(schema),
                     table_partition_cols,
                     overwrite: false,
+                    keep_partition_by_columns,
                 };
-                let mut table_options = session_state.default_table_options();
-                let sink_format: Arc<dyn FileFormat> = match format_options {
-                    FormatOptions::CSV(options) => {
-                        table_options.csv = options.clone();
-                        table_options.set_file_format(FileType::CSV);
-                        table_options.alter_with_string_hash_map(source_option_tuples)?;
-                        Arc::new(CsvFormat::default().with_options(table_options.csv))
-                    }
-                    FormatOptions::JSON(options) => {
-                        table_options.json = options.clone();
-                        table_options.set_file_format(FileType::JSON);
-                        table_options.alter_with_string_hash_map(source_option_tuples)?;
-                        Arc::new(JsonFormat::default().with_options(table_options.json))
-                    }
-                    #[cfg(feature = "parquet")]
-                    FormatOptions::PARQUET(options) => {
-                        table_options.parquet = options.clone();
-                        table_options.set_file_format(FileType::PARQUET);
-                        table_options.alter_with_string_hash_map(source_option_tuples)?;
-                        Arc::new(
-                            ParquetFormat::default().with_options(table_options.parquet),
-                        )
-                    }
-                    FormatOptions::AVRO => Arc::new(AvroFormat {}),
-                    FormatOptions::ARROW => Arc::new(ArrowFormat {}),
-                };
+
+                let sink_format = file_type_to_format(file_type)?
+                    .create(session_state, source_option_tuples)?;
 
                 sink_format
                     .create_writer_physical_plan(input_exec, session_state, config, None)
@@ -1259,7 +1245,7 @@ impl DefaultPhysicalPlanner {
                 let join_filter = match filter {
                     Some(expr) => {
                         // Extract columns from filter expression and saved in a HashSet
-                        let cols = expr.to_columns()?;
+                        let cols = expr.column_refs();
 
                         // Collect left & right field indices, the field indices are sorted in ascending order
                         let left_field_indices = cols
@@ -1766,7 +1752,8 @@ pub fn create_window_expr_with_name(
             window_frame,
             null_treatment,
         }) => {
-            let args = create_physical_exprs(args, logical_schema, execution_props)?;
+            let physical_args =
+                create_physical_exprs(args, logical_schema, execution_props)?;
             let partition_by =
                 create_physical_exprs(partition_by, logical_schema, execution_props)?;
             let order_by =
@@ -1780,13 +1767,13 @@ pub fn create_window_expr_with_name(
             }
 
             let window_frame = Arc::new(window_frame.clone());
-            let ignore_nulls = null_treatment
-                .unwrap_or(sqlparser::ast::NullTreatment::RespectNulls)
+            let ignore_nulls = null_treatment.unwrap_or(NullTreatment::RespectNulls)
                 == NullTreatment::IgnoreNulls;
             windows::create_window_expr(
                 fun,
                 name,
-                &args,
+                &physical_args,
+                args,
                 &partition_by,
                 &order_by,
                 window_frame,
@@ -1837,7 +1824,7 @@ pub fn create_aggregate_expr_with_name_and_maybe_filter(
             order_by,
             null_treatment,
         }) => {
-            let args =
+            let physical_args =
                 create_physical_exprs(args, logical_input_schema, execution_props)?;
             let filter = match filter {
                 Some(e) => Some(create_physical_expr(
@@ -1867,7 +1854,7 @@ pub fn create_aggregate_expr_with_name_and_maybe_filter(
                     let agg_expr = aggregates::create_aggregate_expr(
                         fun,
                         *distinct,
-                        &args,
+                        &physical_args,
                         &ordering_reqs,
                         physical_input_schema,
                         name,
@@ -1889,7 +1876,8 @@ pub fn create_aggregate_expr_with_name_and_maybe_filter(
                         physical_sort_exprs.clone().unwrap_or(vec![]);
                     let agg_expr = udaf::create_aggregate_expr(
                         fun,
-                        &args,
+                        &physical_args,
+                        args,
                         &sort_exprs,
                         &ordering_reqs,
                         physical_input_schema,
@@ -1916,6 +1904,7 @@ pub fn create_aggregate_expr_and_maybe_filter(
     // unpack (nested) aliased logical expressions, e.g. "sum(col) as total"
     let (name, e) = match e {
         Expr::Alias(Alias { expr, name, .. }) => (name.clone(), expr.as_ref()),
+        Expr::AggregateFunction(_) => (e.display_name().unwrap_or(physical_name(e)?), e),
         _ => (physical_name(e)?, e),
     };
 
@@ -1994,23 +1983,37 @@ impl DefaultPhysicalPlanner {
                     .await
                 {
                     Ok(input) => {
-                        // This plan will includes statistics if show_statistics is on
+                        // Include statistics / schema if enabled
                         stringified_plans.push(
                             displayable(input.as_ref())
                                 .set_show_statistics(config.show_statistics)
+                                .set_show_schema(config.show_schema)
                                 .to_stringified(e.verbose, InitialPhysicalPlan),
                         );
 
-                        // If the show_statisitcs is off, add another line to show statsitics in the case of explain verbose
-                        if e.verbose && !config.show_statistics {
-                            stringified_plans.push(
-                                displayable(input.as_ref())
-                                    .set_show_statistics(true)
-                                    .to_stringified(
-                                        e.verbose,
-                                        InitialPhysicalPlanWithStats,
-                                    ),
-                            );
+                        // Show statistics + schema in verbose output even if not
+                        // explicitly requested
+                        if e.verbose {
+                            if !config.show_statistics {
+                                stringified_plans.push(
+                                    displayable(input.as_ref())
+                                        .set_show_statistics(true)
+                                        .to_stringified(
+                                            e.verbose,
+                                            InitialPhysicalPlanWithStats,
+                                        ),
+                                );
+                            }
+                            if !config.show_schema {
+                                stringified_plans.push(
+                                    displayable(input.as_ref())
+                                        .set_show_schema(true)
+                                        .to_stringified(
+                                            e.verbose,
+                                            InitialPhysicalPlanWithSchema,
+                                        ),
+                                );
+                            }
                         }
 
                         let optimized_plan = self.optimize_internal(
@@ -2022,6 +2025,7 @@ impl DefaultPhysicalPlanner {
                                 stringified_plans.push(
                                     displayable(plan)
                                         .set_show_statistics(config.show_statistics)
+                                        .set_show_schema(config.show_schema)
                                         .to_stringified(e.verbose, plan_type),
                                 );
                             },
@@ -2032,19 +2036,33 @@ impl DefaultPhysicalPlanner {
                                 stringified_plans.push(
                                     displayable(input.as_ref())
                                         .set_show_statistics(config.show_statistics)
+                                        .set_show_schema(config.show_schema)
                                         .to_stringified(e.verbose, FinalPhysicalPlan),
                                 );
 
-                                // If the show_statisitcs is off, add another line to show statsitics in the case of explain verbose
-                                if e.verbose && !config.show_statistics {
-                                    stringified_plans.push(
-                                        displayable(input.as_ref())
-                                            .set_show_statistics(true)
-                                            .to_stringified(
-                                                e.verbose,
-                                                FinalPhysicalPlanWithStats,
-                                            ),
-                                    );
+                                // Show statistics + schema in verbose output even if not
+                                // explicitly requested
+                                if e.verbose {
+                                    if !config.show_statistics {
+                                        stringified_plans.push(
+                                            displayable(input.as_ref())
+                                                .set_show_statistics(true)
+                                                .to_stringified(
+                                                    e.verbose,
+                                                    FinalPhysicalPlanWithStats,
+                                                ),
+                                        );
+                                    }
+                                    if !config.show_schema {
+                                        stringified_plans.push(
+                                            displayable(input.as_ref())
+                                                .set_show_schema(true)
+                                                .to_stringified(
+                                                    e.verbose,
+                                                    FinalPhysicalPlanWithSchema,
+                                                ),
+                                        );
+                                    }
                                 }
                             }
                             Err(DataFusionError::Context(optimizer_name, e)) => {
@@ -2181,7 +2199,6 @@ impl DefaultPhysicalPlanner {
         expr: &[Expr],
     ) -> Result<Arc<dyn ExecutionPlan>> {
         let input_schema = input.as_ref().schema();
-
         let physical_exprs = expr
             .iter()
             .map(|e| {
@@ -2586,7 +2603,7 @@ mod tests {
             .downcast_ref::<AggregateExec>()
             .expect("hash aggregate");
         assert_eq!(
-            "SUM(aggregate_test_100.c2)",
+            "sum(aggregate_test_100.c2)",
             final_hash_agg.schema().field(1).name()
         );
         // we need access to the input to the partial aggregate so that other projects can
@@ -2614,7 +2631,7 @@ mod tests {
             .downcast_ref::<AggregateExec>()
             .expect("hash aggregate");
         assert_eq!(
-            "SUM(aggregate_test_100.c3)",
+            "sum(aggregate_test_100.c3)",
             final_hash_agg.schema().field(2).name()
         );
         // we need access to the input to the partial aggregate so that other projects can
@@ -2775,7 +2792,7 @@ mod tests {
         fn default() -> Self {
             Self {
                 schema: DFSchemaRef::new(
-                    DFSchema::from_unqualifed_fields(
+                    DFSchema::from_unqualified_fields(
                         vec![Field::new("a", DataType::Int32, false)].into(),
                         HashMap::new(),
                     )

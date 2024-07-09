@@ -48,7 +48,7 @@ use datafusion_expr::{
     create_udaf, function::AccumulatorArgs, AggregateUDFImpl, GroupsAccumulator,
     SimpleAggregateUDF,
 };
-use datafusion_physical_expr::expressions::AvgAccumulator;
+use datafusion_functions_aggregate::average::AvgAccumulator;
 
 /// Test to show the contents of the setup
 #[tokio::test]
@@ -186,7 +186,7 @@ async fn test_udaf_shadows_builtin_fn() {
     // compute with builtin `sum` aggregator
     let expected = [
         "+---------------------------------------+",
-        "| SUM(arrow_cast(t.time,Utf8(\"Int64\"))) |",
+        "| sum(arrow_cast(t.time,Utf8(\"Int64\"))) |",
         "+---------------------------------------+",
         "| 19000                                 |",
         "+---------------------------------------+",

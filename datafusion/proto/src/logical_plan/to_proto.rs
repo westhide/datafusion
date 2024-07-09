@@ -34,9 +34,9 @@ use crate::protobuf::{
     self,
     plan_type::PlanTypeEnum::{
         AnalyzedLogicalPlan, FinalAnalyzedLogicalPlan, FinalLogicalPlan,
-        FinalPhysicalPlan, FinalPhysicalPlanWithStats, InitialLogicalPlan,
-        InitialPhysicalPlan, InitialPhysicalPlanWithStats, OptimizedLogicalPlan,
-        OptimizedPhysicalPlan,
+        FinalPhysicalPlan, FinalPhysicalPlanWithSchema, FinalPhysicalPlanWithStats,
+        InitialLogicalPlan, InitialPhysicalPlan, InitialPhysicalPlanWithSchema,
+        InitialPhysicalPlanWithStats, OptimizedLogicalPlan, OptimizedPhysicalPlan,
     },
     AnalyzedLogicalPlanType, CubeNode, EmptyMessage, GroupingSetNode, LogicalExprList,
     OptimizedLogicalPlanType, OptimizedPhysicalPlanType, PlaceholderNode, RollupNode,
@@ -96,8 +96,14 @@ impl From<&StringifiedPlan> for protobuf::StringifiedPlan {
                 PlanType::InitialPhysicalPlanWithStats => Some(protobuf::PlanType {
                     plan_type_enum: Some(InitialPhysicalPlanWithStats(EmptyMessage {})),
                 }),
+                PlanType::InitialPhysicalPlanWithSchema => Some(protobuf::PlanType {
+                    plan_type_enum: Some(InitialPhysicalPlanWithSchema(EmptyMessage {})),
+                }),
                 PlanType::FinalPhysicalPlanWithStats => Some(protobuf::PlanType {
                     plan_type_enum: Some(FinalPhysicalPlanWithStats(EmptyMessage {})),
+                }),
+                PlanType::FinalPhysicalPlanWithSchema => Some(protobuf::PlanType {
+                    plan_type_enum: Some(FinalPhysicalPlanWithSchema(EmptyMessage {})),
                 }),
             },
             plan: stringified_plan.plan.to_string(),
@@ -110,38 +116,7 @@ impl From<&AggregateFunction> for protobuf::AggregateFunction {
         match value {
             AggregateFunction::Min => Self::Min,
             AggregateFunction::Max => Self::Max,
-            AggregateFunction::Sum => Self::Sum,
-            AggregateFunction::Avg => Self::Avg,
-            AggregateFunction::BitAnd => Self::BitAnd,
-            AggregateFunction::BitOr => Self::BitOr,
-            AggregateFunction::BitXor => Self::BitXor,
-            AggregateFunction::BoolAnd => Self::BoolAnd,
-            AggregateFunction::BoolOr => Self::BoolOr,
-            AggregateFunction::Count => Self::Count,
-            AggregateFunction::ApproxDistinct => Self::ApproxDistinct,
             AggregateFunction::ArrayAgg => Self::ArrayAgg,
-            AggregateFunction::Variance => Self::Variance,
-            AggregateFunction::VariancePop => Self::VariancePop,
-            AggregateFunction::Stddev => Self::Stddev,
-            AggregateFunction::StddevPop => Self::StddevPop,
-            AggregateFunction::Correlation => Self::Correlation,
-            AggregateFunction::RegrSlope => Self::RegrSlope,
-            AggregateFunction::RegrIntercept => Self::RegrIntercept,
-            AggregateFunction::RegrCount => Self::RegrCount,
-            AggregateFunction::RegrR2 => Self::RegrR2,
-            AggregateFunction::RegrAvgx => Self::RegrAvgx,
-            AggregateFunction::RegrAvgy => Self::RegrAvgy,
-            AggregateFunction::RegrSXX => Self::RegrSxx,
-            AggregateFunction::RegrSYY => Self::RegrSyy,
-            AggregateFunction::RegrSXY => Self::RegrSxy,
-            AggregateFunction::ApproxPercentileCont => Self::ApproxPercentileCont,
-            AggregateFunction::ApproxPercentileContWithWeight => {
-                Self::ApproxPercentileContWithWeight
-            }
-            AggregateFunction::ApproxMedian => Self::ApproxMedian,
-            AggregateFunction::Grouping => Self::Grouping,
-            AggregateFunction::NthValue => Self::NthValueAgg,
-            AggregateFunction::StringAgg => Self::StringAgg,
         }
     }
 }
@@ -398,62 +373,9 @@ pub fn serialize_expr(
         }) => match func_def {
             AggregateFunctionDefinition::BuiltIn(fun) => {
                 let aggr_function = match fun {
-                    AggregateFunction::ApproxDistinct => {
-                        protobuf::AggregateFunction::ApproxDistinct
-                    }
-                    AggregateFunction::ApproxPercentileCont => {
-                        protobuf::AggregateFunction::ApproxPercentileCont
-                    }
-                    AggregateFunction::ApproxPercentileContWithWeight => {
-                        protobuf::AggregateFunction::ApproxPercentileContWithWeight
-                    }
                     AggregateFunction::ArrayAgg => protobuf::AggregateFunction::ArrayAgg,
                     AggregateFunction::Min => protobuf::AggregateFunction::Min,
                     AggregateFunction::Max => protobuf::AggregateFunction::Max,
-                    AggregateFunction::Sum => protobuf::AggregateFunction::Sum,
-                    AggregateFunction::BitAnd => protobuf::AggregateFunction::BitAnd,
-                    AggregateFunction::BitOr => protobuf::AggregateFunction::BitOr,
-                    AggregateFunction::BitXor => protobuf::AggregateFunction::BitXor,
-                    AggregateFunction::BoolAnd => protobuf::AggregateFunction::BoolAnd,
-                    AggregateFunction::BoolOr => protobuf::AggregateFunction::BoolOr,
-                    AggregateFunction::Avg => protobuf::AggregateFunction::Avg,
-                    AggregateFunction::Count => protobuf::AggregateFunction::Count,
-                    AggregateFunction::Variance => protobuf::AggregateFunction::Variance,
-                    AggregateFunction::VariancePop => {
-                        protobuf::AggregateFunction::VariancePop
-                    }
-                    AggregateFunction::Stddev => protobuf::AggregateFunction::Stddev,
-                    AggregateFunction::StddevPop => {
-                        protobuf::AggregateFunction::StddevPop
-                    }
-                    AggregateFunction::Correlation => {
-                        protobuf::AggregateFunction::Correlation
-                    }
-                    AggregateFunction::RegrSlope => {
-                        protobuf::AggregateFunction::RegrSlope
-                    }
-                    AggregateFunction::RegrIntercept => {
-                        protobuf::AggregateFunction::RegrIntercept
-                    }
-                    AggregateFunction::RegrR2 => protobuf::AggregateFunction::RegrR2,
-                    AggregateFunction::RegrAvgx => protobuf::AggregateFunction::RegrAvgx,
-                    AggregateFunction::RegrAvgy => protobuf::AggregateFunction::RegrAvgy,
-                    AggregateFunction::RegrCount => {
-                        protobuf::AggregateFunction::RegrCount
-                    }
-                    AggregateFunction::RegrSXX => protobuf::AggregateFunction::RegrSxx,
-                    AggregateFunction::RegrSYY => protobuf::AggregateFunction::RegrSyy,
-                    AggregateFunction::RegrSXY => protobuf::AggregateFunction::RegrSxy,
-                    AggregateFunction::ApproxMedian => {
-                        protobuf::AggregateFunction::ApproxMedian
-                    }
-                    AggregateFunction::Grouping => protobuf::AggregateFunction::Grouping,
-                    AggregateFunction::NthValue => {
-                        protobuf::AggregateFunction::NthValueAgg
-                    }
-                    AggregateFunction::StringAgg => {
-                        protobuf::AggregateFunction::StringAgg
-                    }
                 };
 
                 let aggregate_expr = protobuf::AggregateExprNode {
@@ -478,6 +400,7 @@ pub fn serialize_expr(
                     protobuf::AggregateUdfExprNode {
                         fun_name: fun.name().to_string(),
                         args: serialize_exprs(args, codec)?,
+                        distinct: *distinct,
                         filter: match filter {
                             Some(e) => Some(Box::new(serialize_expr(e.as_ref(), codec)?)),
                             None => None,
@@ -689,7 +612,7 @@ pub fn serialize_expr(
         }
         Expr::Wildcard { qualifier } => protobuf::LogicalExprNode {
             expr_type: Some(ExprType::Wildcard(protobuf::Wildcard {
-                qualifier: qualifier.clone().unwrap_or("".to_string()),
+                qualifier: qualifier.to_owned().map(|x| x.into()),
             })),
         },
         Expr::ScalarSubquery(_)

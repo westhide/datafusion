@@ -58,6 +58,7 @@ pub struct CsvExec {
     delimiter: u8,
     quote: u8,
     escape: Option<u8>,
+    comment: Option<u8>,
     /// Execution metrics
     metrics: ExecutionPlanMetricsSet,
     /// Compression type of the file associated with CsvExec
@@ -73,6 +74,7 @@ impl CsvExec {
         delimiter: u8,
         quote: u8,
         escape: Option<u8>,
+        comment: Option<u8>,
         file_compression_type: FileCompressionType,
     ) -> Self {
         let (projected_schema, projected_statistics, projected_output_ordering) =
@@ -92,6 +94,7 @@ impl CsvExec {
             metrics: ExecutionPlanMetricsSet::new(),
             file_compression_type,
             cache,
+            comment,
         }
     }
 
@@ -111,6 +114,11 @@ impl CsvExec {
     /// The quote character
     pub fn quote(&self) -> u8 {
         self.quote
+    }
+
+    /// Lines beginning with this byte are ignored.
+    pub fn comment(&self) -> Option<u8> {
+        self.comment
     }
 
     /// The escape character
@@ -234,6 +242,7 @@ impl ExecutionPlan for CsvExec {
             quote: self.quote,
             escape: self.escape,
             object_store,
+            comment: self.comment,
         });
 
         let opener = CsvOpener {
@@ -265,9 +274,11 @@ pub struct CsvConfig {
     quote: u8,
     escape: Option<u8>,
     object_store: Arc<dyn ObjectStore>,
+    comment: Option<u8>,
 }
 
 impl CsvConfig {
+    #[allow(clippy::too_many_arguments)]
     /// Returns a [`CsvConfig`]
     pub fn new(
         batch_size: usize,
@@ -277,6 +288,7 @@ impl CsvConfig {
         delimiter: u8,
         quote: u8,
         object_store: Arc<dyn ObjectStore>,
+        comment: Option<u8>,
     ) -> Self {
         Self {
             batch_size,
@@ -287,6 +299,7 @@ impl CsvConfig {
             quote,
             escape: None,
             object_store,
+            comment,
         }
     }
 }
@@ -308,6 +321,9 @@ impl CsvConfig {
         }
         if let Some(escape) = self.escape {
             builder = builder.with_escape(escape)
+        }
+        if let Some(comment) = self.comment {
+            builder = builder.with_comment(comment);
         }
 
         builder
@@ -518,13 +534,13 @@ mod tests {
 
     use super::*;
     use crate::dataframe::DataFrameWriteOptions;
+    use crate::datasource::file_format::csv::CsvFormat;
     use crate::prelude::*;
     use crate::test::{partitioned_csv_config, partitioned_file_groups};
     use crate::{scalar::ScalarValue, test_util::aggr_test_schema};
 
     use arrow::datatypes::*;
     use datafusion_common::test_util::arrow_test_data;
-    use datafusion_common::FileType;
 
     use object_store::chunked::ChunkedStore;
     use object_store::local::LocalFileSystem;
@@ -545,6 +561,8 @@ mod tests {
     async fn csv_exec_with_projection(
         file_compression_type: FileCompressionType,
     ) -> Result<()> {
+        use crate::datasource::file_format::csv::CsvFormat;
+
         let session_ctx = SessionContext::new();
         let task_ctx = session_ctx.task_ctx();
         let file_schema = aggr_test_schema();
@@ -556,7 +574,7 @@ mod tests {
             path.as_str(),
             filename,
             1,
-            FileType::CSV,
+            Arc::new(CsvFormat::default()),
             file_compression_type.to_owned(),
             tmp_dir.path(),
         )?;
@@ -569,6 +587,7 @@ mod tests {
             true,
             b',',
             b'"',
+            None,
             None,
             file_compression_type.to_owned(),
         );
@@ -610,6 +629,8 @@ mod tests {
     async fn csv_exec_with_mixed_order_projection(
         file_compression_type: FileCompressionType,
     ) -> Result<()> {
+        use crate::datasource::file_format::csv::CsvFormat;
+
         let cfg = SessionConfig::new().set_str("datafusion.catalog.has_header", "true");
         let session_ctx = SessionContext::new_with_config(cfg);
         let task_ctx = session_ctx.task_ctx();
@@ -622,7 +643,7 @@ mod tests {
             path.as_str(),
             filename,
             1,
-            FileType::CSV,
+            Arc::new(CsvFormat::default()),
             file_compression_type.to_owned(),
             tmp_dir.path(),
         )?;
@@ -635,6 +656,7 @@ mod tests {
             true,
             b',',
             b'"',
+            None,
             None,
             file_compression_type.to_owned(),
         );
@@ -676,6 +698,8 @@ mod tests {
     async fn csv_exec_with_limit(
         file_compression_type: FileCompressionType,
     ) -> Result<()> {
+        use crate::datasource::file_format::csv::CsvFormat;
+
         let cfg = SessionConfig::new().set_str("datafusion.catalog.has_header", "true");
         let session_ctx = SessionContext::new_with_config(cfg);
         let task_ctx = session_ctx.task_ctx();
@@ -688,7 +712,7 @@ mod tests {
             path.as_str(),
             filename,
             1,
-            FileType::CSV,
+            Arc::new(CsvFormat::default()),
             file_compression_type.to_owned(),
             tmp_dir.path(),
         )?;
@@ -701,6 +725,7 @@ mod tests {
             true,
             b',',
             b'"',
+            None,
             None,
             file_compression_type.to_owned(),
         );
@@ -740,6 +765,8 @@ mod tests {
     async fn csv_exec_with_missing_column(
         file_compression_type: FileCompressionType,
     ) -> Result<()> {
+        use crate::datasource::file_format::csv::CsvFormat;
+
         let session_ctx = SessionContext::new();
         let task_ctx = session_ctx.task_ctx();
         let file_schema = aggr_test_schema_with_missing_col();
@@ -751,7 +778,7 @@ mod tests {
             path.as_str(),
             filename,
             1,
-            FileType::CSV,
+            Arc::new(CsvFormat::default()),
             file_compression_type.to_owned(),
             tmp_dir.path(),
         )?;
@@ -764,6 +791,7 @@ mod tests {
             true,
             b',',
             b'"',
+            None,
             None,
             file_compression_type.to_owned(),
         );
@@ -793,6 +821,8 @@ mod tests {
     async fn csv_exec_with_partition(
         file_compression_type: FileCompressionType,
     ) -> Result<()> {
+        use crate::datasource::file_format::csv::CsvFormat;
+
         let session_ctx = SessionContext::new();
         let task_ctx = session_ctx.task_ctx();
         let file_schema = aggr_test_schema();
@@ -804,7 +834,7 @@ mod tests {
             path.as_str(),
             filename,
             1,
-            FileType::CSV,
+            Arc::new(CsvFormat::default()),
             file_compression_type.to_owned(),
             tmp_dir.path(),
         )?;
@@ -826,6 +856,7 @@ mod tests {
             true,
             b',',
             b'"',
+            None,
             None,
             file_compression_type.to_owned(),
         );
@@ -908,7 +939,7 @@ mod tests {
             path.as_str(),
             filename,
             1,
-            FileType::CSV,
+            Arc::new(CsvFormat::default()),
             file_compression_type.to_owned(),
             tmp_dir.path(),
         )
@@ -920,6 +951,7 @@ mod tests {
             true,
             b',',
             b'"',
+            None,
             None,
             file_compression_type.to_owned(),
         );
@@ -965,7 +997,7 @@ mod tests {
 
         let data = bytes::Bytes::from("a,b\n1,2\n3,4");
         let path = object_store::path::Path::from("a.csv");
-        store.put(&path, data).await.unwrap();
+        store.put(&path, data.into()).await.unwrap();
 
         let url = Url::parse("memory://").unwrap();
         session_ctx.register_object_store(&url, Arc::new(store));

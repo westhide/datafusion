@@ -87,8 +87,8 @@ impl ScalarUDF {
         Self::new_from_impl(ScalarUdfLegacyWrapper {
             name: name.to_owned(),
             signature: signature.clone(),
-            return_type: return_type.clone(),
-            fun: fun.clone(),
+            return_type: Arc::clone(return_type),
+            fun: Arc::clone(fun),
         })
     }
 
@@ -105,8 +105,8 @@ impl ScalarUDF {
     }
 
     /// Return the underlying [`ScalarUDFImpl`] trait object for this function
-    pub fn inner(&self) -> Arc<dyn ScalarUDFImpl> {
-        self.inner.clone()
+    pub fn inner(&self) -> &Arc<dyn ScalarUDFImpl> {
+        &self.inner
     }
 
     /// Adds additional names that can be used to invoke this function, in
@@ -114,7 +114,7 @@ impl ScalarUDF {
     ///
     /// If you implement [`ScalarUDFImpl`] directly you should return aliases directly.
     pub fn with_aliases(self, aliases: impl IntoIterator<Item = &'static str>) -> Self {
-        Self::new_from_impl(AliasedScalarUDFImpl::new(self.inner.clone(), aliases))
+        Self::new_from_impl(AliasedScalarUDFImpl::new(Arc::clone(&self.inner), aliases))
     }
 
     /// Returns a [`Expr`] logical expression to call this UDF with specified
@@ -199,7 +199,7 @@ impl ScalarUDF {
     /// Returns a `ScalarFunctionImplementation` that can invoke the function
     /// during execution
     pub fn fun(&self) -> ScalarFunctionImplementation {
-        let captured = self.inner.clone();
+        let captured = Arc::clone(&self.inner);
         Arc::new(move |args| captured.invoke(args))
     }
 
@@ -244,8 +244,7 @@ impl ScalarUDF {
     /// # Example
     ///
     /// If the function is `ABS(a)`, the current `interval` is `[4, 5]` and the
-    /// input `a` is given as `[-7, -6]`, then propagation would would return
-    /// `[-5, 5]`.
+    /// input `a` is given as `[-7, 3]`, then propagation would return `[-5, 3]`.
     pub fn propagate_constraints(
         &self,
         interval: &Interval,
@@ -445,8 +444,8 @@ pub trait ScalarUDFImpl: Debug + Send + Sync {
     /// optimizations manually for specific UDFs.
     ///
     /// # Arguments
-    /// * 'args': The arguments of the function
-    /// * 'schema': The schema of the function
+    /// * `args`: The arguments of the function
+    /// * `info`: The necessary information for simplification
     ///
     /// # Returns
     /// [`ExprSimplifyResult`] indicating the result of the simplification NOTE
@@ -504,8 +503,7 @@ pub trait ScalarUDFImpl: Debug + Send + Sync {
     /// # Example
     ///
     /// If the function is `ABS(a)`, the current `interval` is `[4, 5]` and the
-    /// input `a` is given as `[-7, -6]`, then propagation would would return
-    /// `[-5, 5]`.
+    /// input `a` is given as `[-7, 3]`, then propagation would return `[-5, 3]`.
     fn propagate_constraints(
         &self,
         _interval: &Interval,

@@ -22,7 +22,7 @@ use std::fmt;
 
 use sqlparser::{
     ast::{
-        ColumnDef, ColumnOptionDef, ObjectName, OrderByExpr, Query,
+        ColumnDef, ColumnOptionDef, Expr, ObjectName, OrderByExpr, Query,
         Statement as SQLStatement, TableConstraint, Value,
     },
     dialect::{keywords::Keyword, Dialect, GenericDialect},
@@ -323,6 +323,14 @@ impl<'a> DFParser<'a> {
         Ok(stmts)
     }
 
+    pub fn parse_sql_into_expr_with_dialect(
+        sql: &str,
+        dialect: &dyn Dialect,
+    ) -> Result<Expr, ParserError> {
+        let mut parser = DFParser::new_with_dialect(sql, dialect)?;
+        parser.parse_expr()
+    }
+
     /// Report an unexpected token
     fn expected<T>(
         &self,
@@ -365,6 +373,19 @@ impl<'a> DFParser<'a> {
                 )))
             }
         }
+    }
+
+    pub fn parse_expr(&mut self) -> Result<Expr, ParserError> {
+        if let Token::Word(w) = self.parser.peek_token().token {
+            match w.keyword {
+                Keyword::CREATE | Keyword::COPY | Keyword::EXPLAIN => {
+                    return parser_err!("Unsupported command in expression");
+                }
+                _ => {}
+            }
+        }
+
+        self.parser.parse_expr()
     }
 
     /// Parse a SQL `COPY TO` statement
@@ -493,7 +514,8 @@ impl<'a> DFParser<'a> {
     pub fn parse_option_value(&mut self) -> Result<Value, ParserError> {
         let next_token = self.parser.next_token();
         match next_token.token {
-            Token::Word(Word { value, .. }) => Ok(Value::UnQuotedString(value)),
+            // e.g. things like "snappy" or "gzip" that may be keywords
+            Token::Word(word) => Ok(Value::SingleQuotedString(word.value)),
             Token::SingleQuotedString(s) => Ok(Value::SingleQuotedString(s)),
             Token::DoubleQuotedString(s) => Ok(Value::DoubleQuotedString(s)),
             Token::EscapedStringLiteral(s) => Ok(Value::EscapedStringLiteral(s)),
@@ -1139,7 +1161,7 @@ mod tests {
             unbounded: false,
             options: vec![
                 ("k1".into(), Value::SingleQuotedString("v1".into())),
-                ("k2".into(), Value::UnQuotedString("v2".into())),
+                ("k2".into(), Value::SingleQuotedString("v2".into())),
             ],
             constraints: vec![],
         });
@@ -1453,7 +1475,7 @@ mod tests {
     fn copy_to_multi_options() -> Result<(), ParserError> {
         // order of options is preserved
         let sql =
-            "COPY foo TO bar STORED AS parquet OPTIONS ('format.row_group_size' 55, 'format.compression' snappy)";
+            "COPY foo TO bar STORED AS parquet OPTIONS ('format.row_group_size' 55, 'format.compression' snappy, 'execution.keep_partition_by_columns' true)";
 
         let expected_options = vec![
             (
@@ -1462,7 +1484,11 @@ mod tests {
             ),
             (
                 "format.compression".to_string(),
-                Value::UnQuotedString("snappy".to_string()),
+                Value::SingleQuotedString("snappy".to_string()),
+            ),
+            (
+                "execution.keep_partition_by_columns".to_string(),
+                Value::SingleQuotedString("true".to_string()),
             ),
         ];
 

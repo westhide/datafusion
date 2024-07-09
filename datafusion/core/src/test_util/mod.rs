@@ -31,7 +31,7 @@ use std::task::{Context, Poll};
 
 use crate::dataframe::DataFrame;
 use crate::datasource::provider::TableProviderFactory;
-use crate::datasource::stream::{StreamConfig, StreamTable};
+use crate::datasource::stream::{FileStreamProvider, StreamConfig, StreamTable};
 use crate::datasource::{empty::EmptyTable, provider_as_source, TableProvider};
 use crate::error::Result;
 use crate::execution::context::{SessionState, TaskContext};
@@ -285,6 +285,10 @@ impl DisplayAs for UnboundedExec {
 }
 
 impl ExecutionPlan for UnboundedExec {
+    fn name(&self) -> &'static str {
+        Self::static_name()
+    }
+
     fn as_any(&self) -> &dyn Any {
         self
     }
@@ -355,8 +359,8 @@ pub fn register_unbounded_file_with_ordering(
     table_name: &str,
     file_sort_order: Vec<Vec<Expr>>,
 ) -> Result<()> {
-    let config =
-        StreamConfig::new_file(schema, file_path.into()).with_order(file_sort_order);
+    let source = FileStreamProvider::new_file(schema, file_path.into());
+    let config = StreamConfig::new(Arc::new(source)).with_order(file_sort_order);
 
     // Register table:
     ctx.register_table(table_name, Arc::new(StreamTable::new(Arc::new(config))))?;

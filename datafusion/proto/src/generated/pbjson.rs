@@ -534,36 +534,7 @@ impl serde::Serialize for AggregateFunction {
         let variant = match self {
             Self::Min => "MIN",
             Self::Max => "MAX",
-            Self::Sum => "SUM",
-            Self::Avg => "AVG",
-            Self::Count => "COUNT",
-            Self::ApproxDistinct => "APPROX_DISTINCT",
             Self::ArrayAgg => "ARRAY_AGG",
-            Self::Variance => "VARIANCE",
-            Self::VariancePop => "VARIANCE_POP",
-            Self::Stddev => "STDDEV",
-            Self::StddevPop => "STDDEV_POP",
-            Self::Correlation => "CORRELATION",
-            Self::ApproxPercentileCont => "APPROX_PERCENTILE_CONT",
-            Self::ApproxMedian => "APPROX_MEDIAN",
-            Self::ApproxPercentileContWithWeight => "APPROX_PERCENTILE_CONT_WITH_WEIGHT",
-            Self::Grouping => "GROUPING",
-            Self::BitAnd => "BIT_AND",
-            Self::BitOr => "BIT_OR",
-            Self::BitXor => "BIT_XOR",
-            Self::BoolAnd => "BOOL_AND",
-            Self::BoolOr => "BOOL_OR",
-            Self::RegrSlope => "REGR_SLOPE",
-            Self::RegrIntercept => "REGR_INTERCEPT",
-            Self::RegrCount => "REGR_COUNT",
-            Self::RegrR2 => "REGR_R2",
-            Self::RegrAvgx => "REGR_AVGX",
-            Self::RegrAvgy => "REGR_AVGY",
-            Self::RegrSxx => "REGR_SXX",
-            Self::RegrSyy => "REGR_SYY",
-            Self::RegrSxy => "REGR_SXY",
-            Self::StringAgg => "STRING_AGG",
-            Self::NthValueAgg => "NTH_VALUE_AGG",
         };
         serializer.serialize_str(variant)
     }
@@ -577,36 +548,7 @@ impl<'de> serde::Deserialize<'de> for AggregateFunction {
         const FIELDS: &[&str] = &[
             "MIN",
             "MAX",
-            "SUM",
-            "AVG",
-            "COUNT",
-            "APPROX_DISTINCT",
             "ARRAY_AGG",
-            "VARIANCE",
-            "VARIANCE_POP",
-            "STDDEV",
-            "STDDEV_POP",
-            "CORRELATION",
-            "APPROX_PERCENTILE_CONT",
-            "APPROX_MEDIAN",
-            "APPROX_PERCENTILE_CONT_WITH_WEIGHT",
-            "GROUPING",
-            "BIT_AND",
-            "BIT_OR",
-            "BIT_XOR",
-            "BOOL_AND",
-            "BOOL_OR",
-            "REGR_SLOPE",
-            "REGR_INTERCEPT",
-            "REGR_COUNT",
-            "REGR_R2",
-            "REGR_AVGX",
-            "REGR_AVGY",
-            "REGR_SXX",
-            "REGR_SYY",
-            "REGR_SXY",
-            "STRING_AGG",
-            "NTH_VALUE_AGG",
         ];
 
         struct GeneratedVisitor;
@@ -649,36 +591,7 @@ impl<'de> serde::Deserialize<'de> for AggregateFunction {
                 match value {
                     "MIN" => Ok(AggregateFunction::Min),
                     "MAX" => Ok(AggregateFunction::Max),
-                    "SUM" => Ok(AggregateFunction::Sum),
-                    "AVG" => Ok(AggregateFunction::Avg),
-                    "COUNT" => Ok(AggregateFunction::Count),
-                    "APPROX_DISTINCT" => Ok(AggregateFunction::ApproxDistinct),
                     "ARRAY_AGG" => Ok(AggregateFunction::ArrayAgg),
-                    "VARIANCE" => Ok(AggregateFunction::Variance),
-                    "VARIANCE_POP" => Ok(AggregateFunction::VariancePop),
-                    "STDDEV" => Ok(AggregateFunction::Stddev),
-                    "STDDEV_POP" => Ok(AggregateFunction::StddevPop),
-                    "CORRELATION" => Ok(AggregateFunction::Correlation),
-                    "APPROX_PERCENTILE_CONT" => Ok(AggregateFunction::ApproxPercentileCont),
-                    "APPROX_MEDIAN" => Ok(AggregateFunction::ApproxMedian),
-                    "APPROX_PERCENTILE_CONT_WITH_WEIGHT" => Ok(AggregateFunction::ApproxPercentileContWithWeight),
-                    "GROUPING" => Ok(AggregateFunction::Grouping),
-                    "BIT_AND" => Ok(AggregateFunction::BitAnd),
-                    "BIT_OR" => Ok(AggregateFunction::BitOr),
-                    "BIT_XOR" => Ok(AggregateFunction::BitXor),
-                    "BOOL_AND" => Ok(AggregateFunction::BoolAnd),
-                    "BOOL_OR" => Ok(AggregateFunction::BoolOr),
-                    "REGR_SLOPE" => Ok(AggregateFunction::RegrSlope),
-                    "REGR_INTERCEPT" => Ok(AggregateFunction::RegrIntercept),
-                    "REGR_COUNT" => Ok(AggregateFunction::RegrCount),
-                    "REGR_R2" => Ok(AggregateFunction::RegrR2),
-                    "REGR_AVGX" => Ok(AggregateFunction::RegrAvgx),
-                    "REGR_AVGY" => Ok(AggregateFunction::RegrAvgy),
-                    "REGR_SXX" => Ok(AggregateFunction::RegrSxx),
-                    "REGR_SYY" => Ok(AggregateFunction::RegrSyy),
-                    "REGR_SXY" => Ok(AggregateFunction::RegrSxy),
-                    "STRING_AGG" => Ok(AggregateFunction::StringAgg),
-                    "NTH_VALUE_AGG" => Ok(AggregateFunction::NthValueAgg),
                     _ => Err(serde::de::Error::unknown_variant(value, FIELDS)),
                 }
             }
@@ -907,6 +820,9 @@ impl serde::Serialize for AggregateUdfExprNode {
         if !self.args.is_empty() {
             len += 1;
         }
+        if self.distinct {
+            len += 1;
+        }
         if self.filter.is_some() {
             len += 1;
         }
@@ -919,6 +835,9 @@ impl serde::Serialize for AggregateUdfExprNode {
         }
         if !self.args.is_empty() {
             struct_ser.serialize_field("args", &self.args)?;
+        }
+        if self.distinct {
+            struct_ser.serialize_field("distinct", &self.distinct)?;
         }
         if let Some(v) = self.filter.as_ref() {
             struct_ser.serialize_field("filter", v)?;
@@ -939,6 +858,7 @@ impl<'de> serde::Deserialize<'de> for AggregateUdfExprNode {
             "fun_name",
             "funName",
             "args",
+            "distinct",
             "filter",
             "order_by",
             "orderBy",
@@ -948,6 +868,7 @@ impl<'de> serde::Deserialize<'de> for AggregateUdfExprNode {
         enum GeneratedField {
             FunName,
             Args,
+            Distinct,
             Filter,
             OrderBy,
         }
@@ -973,6 +894,7 @@ impl<'de> serde::Deserialize<'de> for AggregateUdfExprNode {
                         match value {
                             "funName" | "fun_name" => Ok(GeneratedField::FunName),
                             "args" => Ok(GeneratedField::Args),
+                            "distinct" => Ok(GeneratedField::Distinct),
                             "filter" => Ok(GeneratedField::Filter),
                             "orderBy" | "order_by" => Ok(GeneratedField::OrderBy),
                             _ => Err(serde::de::Error::unknown_field(value, FIELDS)),
@@ -996,6 +918,7 @@ impl<'de> serde::Deserialize<'de> for AggregateUdfExprNode {
             {
                 let mut fun_name__ = None;
                 let mut args__ = None;
+                let mut distinct__ = None;
                 let mut filter__ = None;
                 let mut order_by__ = None;
                 while let Some(k) = map_.next_key()? {
@@ -1011,6 +934,12 @@ impl<'de> serde::Deserialize<'de> for AggregateUdfExprNode {
                                 return Err(serde::de::Error::duplicate_field("args"));
                             }
                             args__ = Some(map_.next_value()?);
+                        }
+                        GeneratedField::Distinct => {
+                            if distinct__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("distinct"));
+                            }
+                            distinct__ = Some(map_.next_value()?);
                         }
                         GeneratedField::Filter => {
                             if filter__.is_some() {
@@ -1029,6 +958,7 @@ impl<'de> serde::Deserialize<'de> for AggregateUdfExprNode {
                 Ok(AggregateUdfExprNode {
                     fun_name: fun_name__.unwrap_or_default(),
                     args: args__.unwrap_or_default(),
+                    distinct: distinct__.unwrap_or_default(),
                     filter: filter__,
                     order_by: order_by__.unwrap_or_default(),
                 })
@@ -2600,10 +2530,10 @@ impl serde::Serialize for CopyToNode {
         if !self.output_url.is_empty() {
             len += 1;
         }
-        if !self.partition_by.is_empty() {
+        if !self.file_type.is_empty() {
             len += 1;
         }
-        if self.format_options.is_some() {
+        if !self.partition_by.is_empty() {
             len += 1;
         }
         let mut struct_ser = serializer.serialize_struct("datafusion.CopyToNode", len)?;
@@ -2613,27 +2543,12 @@ impl serde::Serialize for CopyToNode {
         if !self.output_url.is_empty() {
             struct_ser.serialize_field("outputUrl", &self.output_url)?;
         }
+        if !self.file_type.is_empty() {
+            #[allow(clippy::needless_borrow)]
+            struct_ser.serialize_field("fileType", pbjson::private::base64::encode(&self.file_type).as_str())?;
+        }
         if !self.partition_by.is_empty() {
             struct_ser.serialize_field("partitionBy", &self.partition_by)?;
-        }
-        if let Some(v) = self.format_options.as_ref() {
-            match v {
-                copy_to_node::FormatOptions::Csv(v) => {
-                    struct_ser.serialize_field("csv", v)?;
-                }
-                copy_to_node::FormatOptions::Json(v) => {
-                    struct_ser.serialize_field("json", v)?;
-                }
-                copy_to_node::FormatOptions::Parquet(v) => {
-                    struct_ser.serialize_field("parquet", v)?;
-                }
-                copy_to_node::FormatOptions::Avro(v) => {
-                    struct_ser.serialize_field("avro", v)?;
-                }
-                copy_to_node::FormatOptions::Arrow(v) => {
-                    struct_ser.serialize_field("arrow", v)?;
-                }
-            }
         }
         struct_ser.end()
     }
@@ -2648,25 +2563,18 @@ impl<'de> serde::Deserialize<'de> for CopyToNode {
             "input",
             "output_url",
             "outputUrl",
+            "file_type",
+            "fileType",
             "partition_by",
             "partitionBy",
-            "csv",
-            "json",
-            "parquet",
-            "avro",
-            "arrow",
         ];
 
         #[allow(clippy::enum_variant_names)]
         enum GeneratedField {
             Input,
             OutputUrl,
+            FileType,
             PartitionBy,
-            Csv,
-            Json,
-            Parquet,
-            Avro,
-            Arrow,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
             fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
@@ -2690,12 +2598,8 @@ impl<'de> serde::Deserialize<'de> for CopyToNode {
                         match value {
                             "input" => Ok(GeneratedField::Input),
                             "outputUrl" | "output_url" => Ok(GeneratedField::OutputUrl),
+                            "fileType" | "file_type" => Ok(GeneratedField::FileType),
                             "partitionBy" | "partition_by" => Ok(GeneratedField::PartitionBy),
-                            "csv" => Ok(GeneratedField::Csv),
-                            "json" => Ok(GeneratedField::Json),
-                            "parquet" => Ok(GeneratedField::Parquet),
-                            "avro" => Ok(GeneratedField::Avro),
-                            "arrow" => Ok(GeneratedField::Arrow),
                             _ => Err(serde::de::Error::unknown_field(value, FIELDS)),
                         }
                     }
@@ -2717,8 +2621,8 @@ impl<'de> serde::Deserialize<'de> for CopyToNode {
             {
                 let mut input__ = None;
                 let mut output_url__ = None;
+                let mut file_type__ = None;
                 let mut partition_by__ = None;
-                let mut format_options__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::Input => {
@@ -2733,54 +2637,27 @@ impl<'de> serde::Deserialize<'de> for CopyToNode {
                             }
                             output_url__ = Some(map_.next_value()?);
                         }
+                        GeneratedField::FileType => {
+                            if file_type__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("fileType"));
+                            }
+                            file_type__ = 
+                                Some(map_.next_value::<::pbjson::private::BytesDeserialize<_>>()?.0)
+                            ;
+                        }
                         GeneratedField::PartitionBy => {
                             if partition_by__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("partitionBy"));
                             }
                             partition_by__ = Some(map_.next_value()?);
                         }
-                        GeneratedField::Csv => {
-                            if format_options__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("csv"));
-                            }
-                            format_options__ = map_.next_value::<::std::option::Option<_>>()?.map(copy_to_node::FormatOptions::Csv)
-;
-                        }
-                        GeneratedField::Json => {
-                            if format_options__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("json"));
-                            }
-                            format_options__ = map_.next_value::<::std::option::Option<_>>()?.map(copy_to_node::FormatOptions::Json)
-;
-                        }
-                        GeneratedField::Parquet => {
-                            if format_options__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("parquet"));
-                            }
-                            format_options__ = map_.next_value::<::std::option::Option<_>>()?.map(copy_to_node::FormatOptions::Parquet)
-;
-                        }
-                        GeneratedField::Avro => {
-                            if format_options__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("avro"));
-                            }
-                            format_options__ = map_.next_value::<::std::option::Option<_>>()?.map(copy_to_node::FormatOptions::Avro)
-;
-                        }
-                        GeneratedField::Arrow => {
-                            if format_options__.is_some() {
-                                return Err(serde::de::Error::duplicate_field("arrow"));
-                            }
-                            format_options__ = map_.next_value::<::std::option::Option<_>>()?.map(copy_to_node::FormatOptions::Arrow)
-;
-                        }
                     }
                 }
                 Ok(CopyToNode {
                     input: input__,
                     output_url: output_url__.unwrap_or_default(),
+                    file_type: file_type__.unwrap_or_default(),
                     partition_by: partition_by__.unwrap_or_default(),
-                    format_options: format_options__,
                 })
             }
         }
@@ -3710,6 +3587,9 @@ impl serde::Serialize for CsvScanExecNode {
         if self.optional_escape.is_some() {
             len += 1;
         }
+        if self.optional_comment.is_some() {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("datafusion.CsvScanExecNode", len)?;
         if let Some(v) = self.base_conf.as_ref() {
             struct_ser.serialize_field("baseConf", v)?;
@@ -3730,6 +3610,13 @@ impl serde::Serialize for CsvScanExecNode {
                 }
             }
         }
+        if let Some(v) = self.optional_comment.as_ref() {
+            match v {
+                csv_scan_exec_node::OptionalComment::Comment(v) => {
+                    struct_ser.serialize_field("comment", v)?;
+                }
+            }
+        }
         struct_ser.end()
     }
 }
@@ -3747,6 +3634,7 @@ impl<'de> serde::Deserialize<'de> for CsvScanExecNode {
             "delimiter",
             "quote",
             "escape",
+            "comment",
         ];
 
         #[allow(clippy::enum_variant_names)]
@@ -3756,6 +3644,7 @@ impl<'de> serde::Deserialize<'de> for CsvScanExecNode {
             Delimiter,
             Quote,
             Escape,
+            Comment,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
             fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
@@ -3782,6 +3671,7 @@ impl<'de> serde::Deserialize<'de> for CsvScanExecNode {
                             "delimiter" => Ok(GeneratedField::Delimiter),
                             "quote" => Ok(GeneratedField::Quote),
                             "escape" => Ok(GeneratedField::Escape),
+                            "comment" => Ok(GeneratedField::Comment),
                             _ => Err(serde::de::Error::unknown_field(value, FIELDS)),
                         }
                     }
@@ -3806,6 +3696,7 @@ impl<'de> serde::Deserialize<'de> for CsvScanExecNode {
                 let mut delimiter__ = None;
                 let mut quote__ = None;
                 let mut optional_escape__ = None;
+                let mut optional_comment__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::BaseConf => {
@@ -3838,6 +3729,12 @@ impl<'de> serde::Deserialize<'de> for CsvScanExecNode {
                             }
                             optional_escape__ = map_.next_value::<::std::option::Option<_>>()?.map(csv_scan_exec_node::OptionalEscape::Escape);
                         }
+                        GeneratedField::Comment => {
+                            if optional_comment__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("comment"));
+                            }
+                            optional_comment__ = map_.next_value::<::std::option::Option<_>>()?.map(csv_scan_exec_node::OptionalComment::Comment);
+                        }
                     }
                 }
                 Ok(CsvScanExecNode {
@@ -3846,6 +3743,7 @@ impl<'de> serde::Deserialize<'de> for CsvScanExecNode {
                     delimiter: delimiter__.unwrap_or_default(),
                     quote: quote__.unwrap_or_default(),
                     optional_escape: optional_escape__,
+                    optional_comment: optional_comment__,
                 })
             }
         }
@@ -5658,6 +5556,9 @@ impl serde::Serialize for FileSinkConfig {
         if self.overwrite {
             len += 1;
         }
+        if self.keep_partition_by_columns {
+            len += 1;
+        }
         let mut struct_ser = serializer.serialize_struct("datafusion.FileSinkConfig", len)?;
         if !self.object_store_url.is_empty() {
             struct_ser.serialize_field("objectStoreUrl", &self.object_store_url)?;
@@ -5676,6 +5577,9 @@ impl serde::Serialize for FileSinkConfig {
         }
         if self.overwrite {
             struct_ser.serialize_field("overwrite", &self.overwrite)?;
+        }
+        if self.keep_partition_by_columns {
+            struct_ser.serialize_field("keepPartitionByColumns", &self.keep_partition_by_columns)?;
         }
         struct_ser.end()
     }
@@ -5698,6 +5602,8 @@ impl<'de> serde::Deserialize<'de> for FileSinkConfig {
             "table_partition_cols",
             "tablePartitionCols",
             "overwrite",
+            "keep_partition_by_columns",
+            "keepPartitionByColumns",
         ];
 
         #[allow(clippy::enum_variant_names)]
@@ -5708,6 +5614,7 @@ impl<'de> serde::Deserialize<'de> for FileSinkConfig {
             OutputSchema,
             TablePartitionCols,
             Overwrite,
+            KeepPartitionByColumns,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
             fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
@@ -5735,6 +5642,7 @@ impl<'de> serde::Deserialize<'de> for FileSinkConfig {
                             "outputSchema" | "output_schema" => Ok(GeneratedField::OutputSchema),
                             "tablePartitionCols" | "table_partition_cols" => Ok(GeneratedField::TablePartitionCols),
                             "overwrite" => Ok(GeneratedField::Overwrite),
+                            "keepPartitionByColumns" | "keep_partition_by_columns" => Ok(GeneratedField::KeepPartitionByColumns),
                             _ => Err(serde::de::Error::unknown_field(value, FIELDS)),
                         }
                     }
@@ -5760,6 +5668,7 @@ impl<'de> serde::Deserialize<'de> for FileSinkConfig {
                 let mut output_schema__ = None;
                 let mut table_partition_cols__ = None;
                 let mut overwrite__ = None;
+                let mut keep_partition_by_columns__ = None;
                 while let Some(k) = map_.next_key()? {
                     match k {
                         GeneratedField::ObjectStoreUrl => {
@@ -5798,6 +5707,12 @@ impl<'de> serde::Deserialize<'de> for FileSinkConfig {
                             }
                             overwrite__ = Some(map_.next_value()?);
                         }
+                        GeneratedField::KeepPartitionByColumns => {
+                            if keep_partition_by_columns__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("keepPartitionByColumns"));
+                            }
+                            keep_partition_by_columns__ = Some(map_.next_value()?);
+                        }
                     }
                 }
                 Ok(FileSinkConfig {
@@ -5807,6 +5722,7 @@ impl<'de> serde::Deserialize<'de> for FileSinkConfig {
                     output_schema: output_schema__,
                     table_partition_cols: table_partition_cols__.unwrap_or_default(),
                     overwrite: overwrite__.unwrap_or_default(),
+                    keep_partition_by_columns: keep_partition_by_columns__.unwrap_or_default(),
                 })
             }
         }
@@ -16218,6 +16134,9 @@ impl serde::Serialize for PlanType {
                 plan_type::PlanTypeEnum::InitialPhysicalPlanWithStats(v) => {
                     struct_ser.serialize_field("InitialPhysicalPlanWithStats", v)?;
                 }
+                plan_type::PlanTypeEnum::InitialPhysicalPlanWithSchema(v) => {
+                    struct_ser.serialize_field("InitialPhysicalPlanWithSchema", v)?;
+                }
                 plan_type::PlanTypeEnum::OptimizedPhysicalPlan(v) => {
                     struct_ser.serialize_field("OptimizedPhysicalPlan", v)?;
                 }
@@ -16226,6 +16145,9 @@ impl serde::Serialize for PlanType {
                 }
                 plan_type::PlanTypeEnum::FinalPhysicalPlanWithStats(v) => {
                     struct_ser.serialize_field("FinalPhysicalPlanWithStats", v)?;
+                }
+                plan_type::PlanTypeEnum::FinalPhysicalPlanWithSchema(v) => {
+                    struct_ser.serialize_field("FinalPhysicalPlanWithSchema", v)?;
                 }
             }
         }
@@ -16246,9 +16168,11 @@ impl<'de> serde::Deserialize<'de> for PlanType {
             "FinalLogicalPlan",
             "InitialPhysicalPlan",
             "InitialPhysicalPlanWithStats",
+            "InitialPhysicalPlanWithSchema",
             "OptimizedPhysicalPlan",
             "FinalPhysicalPlan",
             "FinalPhysicalPlanWithStats",
+            "FinalPhysicalPlanWithSchema",
         ];
 
         #[allow(clippy::enum_variant_names)]
@@ -16260,9 +16184,11 @@ impl<'de> serde::Deserialize<'de> for PlanType {
             FinalLogicalPlan,
             InitialPhysicalPlan,
             InitialPhysicalPlanWithStats,
+            InitialPhysicalPlanWithSchema,
             OptimizedPhysicalPlan,
             FinalPhysicalPlan,
             FinalPhysicalPlanWithStats,
+            FinalPhysicalPlanWithSchema,
         }
         impl<'de> serde::Deserialize<'de> for GeneratedField {
             fn deserialize<D>(deserializer: D) -> std::result::Result<GeneratedField, D::Error>
@@ -16291,9 +16217,11 @@ impl<'de> serde::Deserialize<'de> for PlanType {
                             "FinalLogicalPlan" => Ok(GeneratedField::FinalLogicalPlan),
                             "InitialPhysicalPlan" => Ok(GeneratedField::InitialPhysicalPlan),
                             "InitialPhysicalPlanWithStats" => Ok(GeneratedField::InitialPhysicalPlanWithStats),
+                            "InitialPhysicalPlanWithSchema" => Ok(GeneratedField::InitialPhysicalPlanWithSchema),
                             "OptimizedPhysicalPlan" => Ok(GeneratedField::OptimizedPhysicalPlan),
                             "FinalPhysicalPlan" => Ok(GeneratedField::FinalPhysicalPlan),
                             "FinalPhysicalPlanWithStats" => Ok(GeneratedField::FinalPhysicalPlanWithStats),
+                            "FinalPhysicalPlanWithSchema" => Ok(GeneratedField::FinalPhysicalPlanWithSchema),
                             _ => Err(serde::de::Error::unknown_field(value, FIELDS)),
                         }
                     }
@@ -16365,6 +16293,13 @@ impl<'de> serde::Deserialize<'de> for PlanType {
                             plan_type_enum__ = map_.next_value::<::std::option::Option<_>>()?.map(plan_type::PlanTypeEnum::InitialPhysicalPlanWithStats)
 ;
                         }
+                        GeneratedField::InitialPhysicalPlanWithSchema => {
+                            if plan_type_enum__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("InitialPhysicalPlanWithSchema"));
+                            }
+                            plan_type_enum__ = map_.next_value::<::std::option::Option<_>>()?.map(plan_type::PlanTypeEnum::InitialPhysicalPlanWithSchema)
+;
+                        }
                         GeneratedField::OptimizedPhysicalPlan => {
                             if plan_type_enum__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("OptimizedPhysicalPlan"));
@@ -16384,6 +16319,13 @@ impl<'de> serde::Deserialize<'de> for PlanType {
                                 return Err(serde::de::Error::duplicate_field("FinalPhysicalPlanWithStats"));
                             }
                             plan_type_enum__ = map_.next_value::<::std::option::Option<_>>()?.map(plan_type::PlanTypeEnum::FinalPhysicalPlanWithStats)
+;
+                        }
+                        GeneratedField::FinalPhysicalPlanWithSchema => {
+                            if plan_type_enum__.is_some() {
+                                return Err(serde::de::Error::duplicate_field("FinalPhysicalPlanWithSchema"));
+                            }
+                            plan_type_enum__ = map_.next_value::<::std::option::Option<_>>()?.map(plan_type::PlanTypeEnum::FinalPhysicalPlanWithSchema)
 ;
                         }
                     }
@@ -20004,12 +19946,12 @@ impl serde::Serialize for Wildcard {
     {
         use serde::ser::SerializeStruct;
         let mut len = 0;
-        if !self.qualifier.is_empty() {
+        if self.qualifier.is_some() {
             len += 1;
         }
         let mut struct_ser = serializer.serialize_struct("datafusion.Wildcard", len)?;
-        if !self.qualifier.is_empty() {
-            struct_ser.serialize_field("qualifier", &self.qualifier)?;
+        if let Some(v) = self.qualifier.as_ref() {
+            struct_ser.serialize_field("qualifier", v)?;
         }
         struct_ser.end()
     }
@@ -20075,12 +20017,12 @@ impl<'de> serde::Deserialize<'de> for Wildcard {
                             if qualifier__.is_some() {
                                 return Err(serde::de::Error::duplicate_field("qualifier"));
                             }
-                            qualifier__ = Some(map_.next_value()?);
+                            qualifier__ = map_.next_value()?;
                         }
                     }
                 }
                 Ok(Wildcard {
-                    qualifier: qualifier__.unwrap_or_default(),
+                    qualifier: qualifier__,
                 })
             }
         }

@@ -26,8 +26,10 @@ available for creating logical expressions. These are documented below.
 Most functions and methods may receive and return an `Expr`, which can be chained together using a fluent-style API:
 
 ```rust
+use datafusion::prelude::*;
 // create the expression `(a > 6) AND (b < 7)`
-col("a").gt(lit(6)).and(col("b").lt(lit(7)))
+col("a").gt(lit(6)).and(col("b").lt(lit(7)));
+
 ```
 
 :::
@@ -303,6 +305,16 @@ select log(-1), log(0), sqrt(-1);
 | min(expr)                                                         | Finds the minimum value of `expr`.                                                      |
 | rollup(exprs)                                                     | Creates a grouping set for rollup sets.                                                 |
 | sum(expr)                                                         | Сalculates the sum of `expr`.                                                           |
+
+## Aggregate Function Builder
+
+You can also use the `AggregateExt` trait to more easily build Aggregate arguments `Expr`.
+
+See `datafusion-examples/examples/expr_api.rs` for example usage.
+
+| Syntax                                                                  | Equivalent to                       |
+| ----------------------------------------------------------------------- | ----------------------------------- |
+| first_value_udaf.call(vec![expr]).order_by(vec![expr]).build().unwrap() | first_value(expr, Some(vec![expr])) |
 
 ## Subquery Expressions
 

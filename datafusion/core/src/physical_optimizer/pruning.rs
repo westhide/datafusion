@@ -471,8 +471,10 @@ pub struct PruningPredicate {
     /// Original physical predicate from which this predicate expr is derived
     /// (required for serialization)
     orig_expr: Arc<dyn PhysicalExpr>,
-    /// [`LiteralGuarantee`]s that are used to try and prove a predicate can not
-    /// possibly evaluate to `true`.
+    /// [`LiteralGuarantee`]s used to try and prove a predicate can not possibly
+    /// evaluate to `true`.
+    ///
+    /// See [`PruningPredicate::literal_guarantees`] for more details.
     literal_guarantees: Vec<LiteralGuarantee>,
 }
 
@@ -595,6 +597,10 @@ impl PruningPredicate {
     }
 
     /// Returns a reference to the literal guarantees
+    ///
+    /// Note that **All** `LiteralGuarantee`s must be satisfied for the
+    /// expression to possibly be `true`. If any is not satisfied, the
+    /// expression is guaranteed to be `null` or `false`.
     pub fn literal_guarantees(&self) -> &[LiteralGuarantee] {
         &self.literal_guarantees
     }
@@ -772,11 +778,17 @@ impl RequiredColumns {
         column_expr: &Arc<dyn PhysicalExpr>,
         field: &Field,
         stat_type: StatisticsType,
-        suffix: &str,
     ) -> Result<Arc<dyn PhysicalExpr>> {
         let (idx, need_to_insert) = match self.find_stat_column(column, stat_type) {
             Some(idx) => (idx, false),
             None => (self.columns.len(), true),
+        };
+
+        let suffix = match stat_type {
+            StatisticsType::Min => "min",
+            StatisticsType::Max => "max",
+            StatisticsType::NullCount => "null_count",
+            StatisticsType::RowCount => "row_count",
         };
 
         let stat_column =
@@ -800,7 +812,7 @@ impl RequiredColumns {
         column_expr: &Arc<dyn PhysicalExpr>,
         field: &Field,
     ) -> Result<Arc<dyn PhysicalExpr>> {
-        self.stat_column_expr(column, column_expr, field, StatisticsType::Min, "min")
+        self.stat_column_expr(column, column_expr, field, StatisticsType::Min)
     }
 
     /// rewrite col --> col_max
@@ -810,7 +822,7 @@ impl RequiredColumns {
         column_expr: &Arc<dyn PhysicalExpr>,
         field: &Field,
     ) -> Result<Arc<dyn PhysicalExpr>> {
-        self.stat_column_expr(column, column_expr, field, StatisticsType::Max, "max")
+        self.stat_column_expr(column, column_expr, field, StatisticsType::Max)
     }
 
     /// rewrite col --> col_null_count
@@ -820,13 +832,7 @@ impl RequiredColumns {
         column_expr: &Arc<dyn PhysicalExpr>,
         field: &Field,
     ) -> Result<Arc<dyn PhysicalExpr>> {
-        self.stat_column_expr(
-            column,
-            column_expr,
-            field,
-            StatisticsType::NullCount,
-            "null_count",
-        )
+        self.stat_column_expr(column, column_expr, field, StatisticsType::NullCount)
     }
 
     /// rewrite col --> col_row_count
@@ -836,13 +842,7 @@ impl RequiredColumns {
         column_expr: &Arc<dyn PhysicalExpr>,
         field: &Field,
     ) -> Result<Arc<dyn PhysicalExpr>> {
-        self.stat_column_expr(
-            column,
-            column_expr,
-            field,
-            StatisticsType::RowCount,
-            "row_count",
-        )
+        self.stat_column_expr(column, column_expr, field, StatisticsType::RowCount)
     }
 }
 
@@ -1549,22 +1549,22 @@ pub(crate) enum StatisticsType {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+    use std::ops::{Not, Rem};
+
     use super::*;
     use crate::assert_batches_eq;
     use crate::logical_expr::{col, lit};
+
     use arrow::array::Decimal128Array;
     use arrow::{
         array::{BinaryArray, Int32Array, Int64Array, StringArray},
         datatypes::TimeUnit,
     };
     use arrow_array::UInt64Array;
-    use datafusion_common::ToDFSchema;
-    use datafusion_expr::execution_props::ExecutionProps;
     use datafusion_expr::expr::InList;
     use datafusion_expr::{cast, is_null, try_cast, Expr};
-    use datafusion_physical_expr::create_physical_expr;
-    use std::collections::HashMap;
-    use std::ops::{Not, Rem};
+    use datafusion_physical_expr::planner::logical2physical;
 
     #[derive(Debug, Default)]
     /// Mock statistic provider for tests
@@ -3869,11 +3869,5 @@ mod tests {
     ) -> Arc<dyn PhysicalExpr> {
         let expr = logical2physical(expr, schema);
         build_predicate_expression(&expr, schema, required_columns)
-    }
-
-    fn logical2physical(expr: &Expr, schema: &Schema) -> Arc<dyn PhysicalExpr> {
-        let df_schema = schema.clone().to_dfschema().unwrap();
-        let execution_props = ExecutionProps::new();
-        create_physical_expr(expr, &df_schema, &execution_props).unwrap()
     }
 }

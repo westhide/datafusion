@@ -15,15 +15,38 @@
 // specific language governing permissions and limitations
 // under the License.
 
+use std::any::Any;
 #[cfg(test)]
 use std::collections::HashMap;
+use std::fmt::Display;
 use std::{sync::Arc, vec};
 
 use arrow_schema::*;
 use datafusion_common::config::ConfigOptions;
-use datafusion_common::{plan_err, Result, TableReference};
+use datafusion_common::file_options::file_type::FileType;
+use datafusion_common::{plan_err, GetExt, Result, TableReference};
 use datafusion_expr::{AggregateUDF, ScalarUDF, TableSource, WindowUDF};
 use datafusion_sql::planner::ContextProvider;
+
+struct MockCsvType {}
+
+impl GetExt for MockCsvType {
+    fn get_ext(&self) -> String {
+        "csv".to_string()
+    }
+}
+
+impl FileType for MockCsvType {
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+}
+
+impl Display for MockCsvType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.get_ext())
+    }
+}
 
 #[derive(Default)]
 pub(crate) struct MockContextProvider {
@@ -42,6 +65,12 @@ impl MockContextProvider {
     #[allow(dead_code)]
     pub(crate) fn with_udf(mut self, udf: ScalarUDF) -> Self {
         self.udfs.insert(udf.name().to_string(), Arc::new(udf));
+        self
+    }
+
+    pub(crate) fn with_udaf(mut self, udaf: Arc<AggregateUDF>) -> Self {
+        // TODO: change to to_string() if all the function name is converted to lowercase
+        self.udafs.insert(udaf.name().to_lowercase(), udaf);
         self
     }
 }
@@ -183,6 +212,13 @@ impl ContextProvider for MockContextProvider {
 
     fn options(&self) -> &ConfigOptions {
         &self.options
+    }
+
+    fn get_file_type(
+        &self,
+        _ext: &str,
+    ) -> Result<Arc<dyn datafusion_common::file_options::file_type::FileType>> {
+        Ok(Arc::new(MockCsvType {}))
     }
 
     fn create_cte_work_table(

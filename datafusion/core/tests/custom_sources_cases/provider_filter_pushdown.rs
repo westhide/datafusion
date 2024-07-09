@@ -35,6 +35,7 @@ use datafusion::scalar::ScalarValue;
 use datafusion_common::cast::as_primitive_array;
 use datafusion_common::{internal_err, not_impl_err};
 use datafusion_expr::expr::{BinaryExpr, Cast};
+use datafusion_functions_aggregate::expr_fn::count;
 use datafusion_physical_expr::EquivalenceProperties;
 
 use async_trait::async_trait;
@@ -93,6 +94,10 @@ impl DisplayAs for CustomPlan {
 }
 
 impl ExecutionPlan for CustomPlan {
+    fn name(&self) -> &'static str {
+        Self::static_name()
+    }
+
     fn as_any(&self) -> &dyn std::any::Any {
         self
     }

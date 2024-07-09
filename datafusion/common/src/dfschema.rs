@@ -98,7 +98,7 @@ pub type DFSchemaRef = Arc<DFSchema>;
 /// use arrow::datatypes::Field;
 /// use std::collections::HashMap;
 ///
-/// let df_schema = DFSchema::from_unqualifed_fields(vec![
+/// let df_schema = DFSchema::from_unqualified_fields(vec![
 ///    Field::new("c1", arrow::datatypes::DataType::Int32, false),
 /// ].into(),HashMap::new()).unwrap();
 /// let schema = Schema::from(df_schema);
@@ -159,6 +159,19 @@ impl DFSchema {
     }
 
     /// Create a new `DFSchema` from a list of Arrow [Field]s
+    #[allow(deprecated)]
+    pub fn from_unqualified_fields(
+        fields: Fields,
+        metadata: HashMap<String, String>,
+    ) -> Result<Self> {
+        Self::from_unqualifed_fields(fields, metadata)
+    }
+
+    /// Create a new `DFSchema` from a list of Arrow [Field]s
+    #[deprecated(
+        since = "40.0.0",
+        note = "Please use `from_unqualified_fields` instead (this one's name is a typo). This method is subject to be removed soon"
+    )]
     pub fn from_unqualifed_fields(
         fields: Fields,
         metadata: HashMap<String, String>,
@@ -666,7 +679,7 @@ impl DFSchema {
     /// than datatype_is_semantically_equal in that a Dictionary<K,V> type is logically
     /// equal to a plain V type, but not semantically equal. Dictionary<K1, V1> is also
     /// logically equal to Dictionary<K2, V1>.
-    fn datatype_is_logically_equal(dt1: &DataType, dt2: &DataType) -> bool {
+    pub fn datatype_is_logically_equal(dt1: &DataType, dt2: &DataType) -> bool {
         // check nested fields
         match (dt1, dt2) {
             (DataType::Dictionary(_, v1), DataType::Dictionary(_, v2)) => {

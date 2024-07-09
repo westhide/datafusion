@@ -19,6 +19,7 @@ use std::vec;
 
 use arrow_schema::*;
 use datafusion_common::{DFSchema, Result, TableReference};
+use datafusion_expr::test::function_stub::{count_udaf, sum_udaf};
 use datafusion_expr::{col, table_scan};
 use datafusion_sql::planner::{ContextProvider, PlannerContext, SqlToRel};
 use datafusion_sql::unparser::dialect::{
@@ -48,8 +49,8 @@ fn roundtrip_expr() {
         ),
         (
             TableReference::bare("person"),
-            "SUM((age * 2))",
-            r#"SUM((age * 2))"#,
+            "sum((age * 2))",
+            r#"sum((age * 2))"#,
         ),
     ];
 
@@ -57,7 +58,7 @@ fn roundtrip_expr() {
         let dialect = GenericDialect {};
         let sql_expr = Parser::new(&dialect).try_with_sql(sql)?.parse_expr()?;
 
-        let context = MockContextProvider::default();
+        let context = MockContextProvider::default().with_udaf(sum_udaf());
         let schema = context.get_table_source(table)?.schema();
         let df_schema = DFSchema::try_from(schema.as_ref().clone())?;
         let sql_to_rel = SqlToRel::new(&context);
@@ -78,6 +79,11 @@ fn roundtrip_expr() {
 #[test]
 fn roundtrip_statement() -> Result<()> {
     let tests: Vec<&str> = vec![
+            "select 1;",
+            "select 1 limit 0;",
+            "select ta.j1_id from j1 ta join (select 1 as j1_id) tb on ta.j1_id = tb.j1_id;",
+            "select ta.j1_id from j1 ta join (select 1 as j1_id) tb on ta.j1_id = tb.j1_id where ta.j1_id > 1;",
+            "select ta.j1_id from (select 1 as j1_id) ta;",
             "select ta.j1_id from j1 ta;",
             "select ta.j1_id from j1 ta order by ta.j1_id;",
             "select * from j1 ta order by ta.j1_id, ta.j1_string desc;",
@@ -147,7 +153,9 @@ fn roundtrip_statement() -> Result<()> {
             .try_with_sql(query)?
             .parse_statement()?;
 
-        let context = MockContextProvider::default();
+        let context = MockContextProvider::default()
+            .with_udaf(sum_udaf())
+            .with_udaf(count_udaf());
         let sql_to_rel = SqlToRel::new(&context);
         let plan = sql_to_rel.sql_statement_to_plan(statement).unwrap();
 
@@ -222,6 +230,16 @@ fn roundtrip_statement_with_dialect() -> Result<()> {
             parser_dialect: Box::new(GenericDialect {}),
             unparser_dialect: Box::new(UnparserDefaultDialect {}),
         },
+        TestStatementWithDialect {
+            sql: "SELECT j1_id FROM j1
+                  UNION ALL
+                  SELECT tb.j2_id as j1_id FROM j2 tb
+                  ORDER BY j1_id
+                  LIMIT 10;",
+            expected: r#"SELECT j1.j1_id FROM j1 UNION ALL SELECT tb.j2_id AS j1_id FROM j2 AS tb ORDER BY j1_id ASC NULLS LAST LIMIT 10"#,
+            parser_dialect: Box::new(GenericDialect {}),
+            unparser_dialect: Box::new(UnparserDefaultDialect {}),
+        },
     ];
 
     for query in tests {
@@ -231,7 +249,9 @@ fn roundtrip_statement_with_dialect() -> Result<()> {
 
         let context = MockContextProvider::default();
         let sql_to_rel = SqlToRel::new(&context);
-        let plan = sql_to_rel.sql_statement_to_plan(statement).unwrap();
+        let plan = sql_to_rel
+            .sql_statement_to_plan(statement)
+            .unwrap_or_else(|e| panic!("Failed to parse sql: {}\n{e}", query.sql));
 
         let unparser = Unparser::new(&*query.unparser_dialect);
         let roundtrip_statement = unparser.plan_to_sql(&plan)?;

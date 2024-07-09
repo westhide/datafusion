@@ -47,6 +47,7 @@ use log::debug;
 use parquet::basic::{ConvertedType, LogicalType};
 use parquet::schema::types::ColumnDescriptor;
 
+mod access_plan;
 mod metrics;
 mod opener;
 mod page_filter;
@@ -59,10 +60,11 @@ mod writer;
 use crate::datasource::schema_adapter::{
     DefaultSchemaAdapterFactory, SchemaAdapterFactory,
 };
+pub use access_plan::{ParquetAccessPlan, RowGroupAccess};
 pub use metrics::ParquetFileMetrics;
 use opener::ParquetOpener;
 pub use reader::{DefaultParquetFileReaderFactory, ParquetFileReaderFactory};
-pub use statistics::{RequestedStatistics, StatisticsConverter};
+pub use statistics::StatisticsConverter;
 pub use writer::plan_to_parquet;
 
 /// Execution plan for reading one or more Parquet files.
@@ -143,6 +145,51 @@ pub use writer::plan_to_parquet;
 /// custom reader is used, it supplies the metadata directly and this parameter
 /// is ignored. [`ParquetExecBuilder::with_metadata_size_hint`] for more details.
 ///
+/// * User provided  [`ParquetAccessPlan`]s to skip row groups and/or pages
+/// based on external information. See "Implementing External Indexes" below
+///
+/// # Implementing External Indexes
+///
+/// It is possible to restrict the row groups and selections within those row
+/// groups that the ParquetExec will consider by providing an initial
+/// [`ParquetAccessPlan`] as `extensions` on [`PartitionedFile`]. This can be
+/// used to implement external indexes on top of parquet files and select only
+/// portions of the files.
+///
+/// The `ParquetExec` will try and reduce any provided `ParquetAccessPlan`
+/// further based on the contents of `ParquetMetadata` and other settings.
+///
+/// ## Example of providing a ParquetAccessPlan
+///
+/// ```
+/// # use std::sync::Arc;
+/// # use arrow_schema::{Schema, SchemaRef};
+/// # use datafusion::datasource::listing::PartitionedFile;
+/// # use datafusion::datasource::physical_plan::parquet::ParquetAccessPlan;
+/// # use datafusion::datasource::physical_plan::{FileScanConfig, ParquetExec};
+/// # use datafusion_execution::object_store::ObjectStoreUrl;
+/// # fn schema() -> SchemaRef {
+/// #   Arc::new(Schema::empty())
+/// # }
+/// // create an access plan to scan row group 0, 1 and 3 and skip row groups 2 and 4
+/// let mut access_plan = ParquetAccessPlan::new_all(5);
+/// access_plan.skip(2);
+/// access_plan.skip(4);
+/// // provide the plan as extension to the FileScanConfig
+/// let partitioned_file = PartitionedFile::new("my_file.parquet", 1234)
+///   .with_extensions(Arc::new(access_plan));
+/// // create a ParquetExec to scan this file
+/// let file_scan_config = FileScanConfig::new(ObjectStoreUrl::local_filesystem(), schema())
+///     .with_file(partitioned_file);
+/// // this parquet exec will not even try to read row groups 2 and 4. Additional
+/// // pruning based on predicates may also happen
+/// let exec = ParquetExec::builder(file_scan_config).build();
+/// ```
+///
+/// For a complete example, see the [`advanced_parquet_index` example]).
+///
+/// [`parquet_index_advanced` example]: https://github.com/apache/datafusion/blob/main/datafusion-examples/examples/advanced_parquet_index.rs
+///
 /// # Execution Overview
 ///
 /// * Step 1: [`ParquetExec::execute`] is called, returning a [`FileStream`]
@@ -152,8 +199,9 @@ pub use writer::plan_to_parquet;
 /// the file.
 ///
 /// * Step 3: The `ParquetOpener` gets the [`ParquetMetaData`] (file metadata)
-/// via [`ParquetFileReaderFactory`] and applies any predicates and projections
-/// to determine what pages must be read.
+/// via [`ParquetFileReaderFactory`], creating a [`ParquetAccessPlan`] by
+/// applying predicates to metadata. The plan and projections are used to
+/// determine what pages must be read.
 ///
 /// * Step 4: The stream begins reading data, fetching the required pages
 /// and incrementally decoding them.
@@ -748,17 +796,15 @@ mod tests {
         ArrayRef, Date64Array, Int32Array, Int64Array, Int8Array, StringArray,
         StructArray,
     };
-
     use arrow::datatypes::{Field, Schema, SchemaBuilder};
     use arrow::record_batch::RecordBatch;
     use arrow_schema::Fields;
-    use datafusion_common::{assert_contains, FileType, GetExt, ScalarValue, ToDFSchema};
-    use datafusion_expr::execution_props::ExecutionProps;
+    use datafusion_common::{assert_contains, ScalarValue};
     use datafusion_expr::{col, lit, when, Expr};
-    use datafusion_physical_expr::create_physical_expr;
+    use datafusion_physical_expr::planner::logical2physical;
+    use datafusion_physical_plan::ExecutionPlanProperties;
 
     use chrono::{TimeZone, Utc};
-    use datafusion_physical_plan::ExecutionPlanProperties;
     use futures::StreamExt;
     use object_store::local::LocalFileSystem;
     use object_store::path::Path;
@@ -1948,7 +1994,7 @@ mod tests {
         // Configure listing options
         let file_format = ParquetFormat::default().with_enable_pruning(true);
         let listing_options = ListingOptions::new(Arc::new(file_format))
-            .with_file_extension(FileType::PARQUET.get_ext());
+            .with_file_extension(ParquetFormat::default().get_ext());
 
         // execute a simple query and write the results to parquet
         let out_dir = tmp_dir.as_ref().to_str().unwrap().to_string() + "/out";
@@ -2011,12 +2057,6 @@ mod tests {
         assert_eq!(allparts_count, 40);
 
         Ok(())
-    }
-
-    fn logical2physical(expr: &Expr, schema: &Schema) -> Arc<dyn PhysicalExpr> {
-        let df_schema = schema.clone().to_dfschema().unwrap();
-        let execution_props = ExecutionProps::new();
-        create_physical_expr(expr, &df_schema, &execution_props).unwrap()
     }
 
     #[tokio::test]

@@ -49,7 +49,8 @@ datafusion-common = { workspace = true }
 datafusion-execution = { workspace = true }
 datafusion-expr = { workspace = true }
 datafusion-functions = { workspace = true }
-itertools = { version = "0.13", features = ["use_std"] }
+datafusion-functions-aggregate = { workspace = true }
+itertools = { workspace = true }
 log = { workspace = true }
 paste = "1.0.14"
 

@@ -55,11 +55,30 @@
 #[macro_use]
 pub mod macros;
 
+pub mod approx_distinct;
+pub mod correlation;
+pub mod count;
 pub mod covariance;
 pub mod first_last;
+pub mod hyperloglog;
 pub mod median;
+pub mod regr;
+pub mod stddev;
 pub mod sum;
+pub mod variance;
 
+pub mod approx_median;
+pub mod approx_percentile_cont;
+pub mod approx_percentile_cont_with_weight;
+pub mod average;
+pub mod bit_and_or_xor;
+pub mod bool_and_or;
+pub mod grouping;
+pub mod nth_value;
+pub mod string_agg;
+
+use crate::approx_percentile_cont::approx_percentile_cont_udaf;
+use crate::approx_percentile_cont_with_weight::approx_percentile_cont_with_weight_udaf;
 use datafusion_common::Result;
 use datafusion_execution::FunctionRegistry;
 use datafusion_expr::AggregateUDF;
@@ -68,12 +87,40 @@ use std::sync::Arc;
 
 /// Fluent-style API for creating `Expr`s
 pub mod expr_fn {
+    pub use super::approx_distinct;
+    pub use super::approx_median::approx_median;
+    pub use super::approx_percentile_cont::approx_percentile_cont;
+    pub use super::approx_percentile_cont_with_weight::approx_percentile_cont_with_weight;
+    pub use super::average::avg;
+    pub use super::bit_and_or_xor::bit_and;
+    pub use super::bit_and_or_xor::bit_or;
+    pub use super::bit_and_or_xor::bit_xor;
+    pub use super::bool_and_or::bool_and;
+    pub use super::bool_and_or::bool_or;
+    pub use super::correlation::corr;
+    pub use super::count::count;
+    pub use super::count::count_distinct;
     pub use super::covariance::covar_pop;
     pub use super::covariance::covar_samp;
     pub use super::first_last::first_value;
     pub use super::first_last::last_value;
+    pub use super::grouping::grouping;
     pub use super::median::median;
+    pub use super::nth_value::nth_value;
+    pub use super::regr::regr_avgx;
+    pub use super::regr::regr_avgy;
+    pub use super::regr::regr_count;
+    pub use super::regr::regr_intercept;
+    pub use super::regr::regr_r2;
+    pub use super::regr::regr_slope;
+    pub use super::regr::regr_sxx;
+    pub use super::regr::regr_sxy;
+    pub use super::regr::regr_syy;
+    pub use super::stddev::stddev;
+    pub use super::stddev::stddev_pop;
     pub use super::sum::sum;
+    pub use super::variance::var_pop;
+    pub use super::variance::var_sample;
 }
 
 /// Returns all default aggregate functions
@@ -82,9 +129,37 @@ pub fn all_default_aggregate_functions() -> Vec<Arc<AggregateUDF>> {
         first_last::first_value_udaf(),
         first_last::last_value_udaf(),
         covariance::covar_samp_udaf(),
-        sum::sum_udaf(),
         covariance::covar_pop_udaf(),
+        correlation::corr_udaf(),
+        sum::sum_udaf(),
         median::median_udaf(),
+        count::count_udaf(),
+        regr::regr_slope_udaf(),
+        regr::regr_intercept_udaf(),
+        regr::regr_count_udaf(),
+        regr::regr_r2_udaf(),
+        regr::regr_avgx_udaf(),
+        regr::regr_avgy_udaf(),
+        regr::regr_sxx_udaf(),
+        regr::regr_syy_udaf(),
+        regr::regr_sxy_udaf(),
+        variance::var_samp_udaf(),
+        variance::var_pop_udaf(),
+        stddev::stddev_udaf(),
+        stddev::stddev_pop_udaf(),
+        approx_median::approx_median_udaf(),
+        approx_distinct::approx_distinct_udaf(),
+        approx_percentile_cont_udaf(),
+        approx_percentile_cont_with_weight_udaf(),
+        string_agg::string_agg_udaf(),
+        bit_and_or_xor::bit_and_udaf(),
+        bit_and_or_xor::bit_or_udaf(),
+        bit_and_or_xor::bit_xor_udaf(),
+        bool_and_or::bool_and_udaf(),
+        bool_and_or::bool_or_udaf(),
+        average::avg_udaf(),
+        grouping::grouping_udaf(),
+        nth_value::nth_value_udaf(),
     ]
 }
 
@@ -114,8 +189,8 @@ mod tests {
         let mut names = HashSet::new();
         for func in all_default_aggregate_functions() {
             // TODO: remove this
-            // sum is in intermidiate migration state, skip this
-            if func.name().to_lowercase() == "sum" {
+            // These functions are in intermediate migration state, skip them
+            if func.name().to_lowercase() == "count" {
                 continue;
             }
             assert!(

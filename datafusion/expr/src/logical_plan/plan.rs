@@ -25,7 +25,7 @@ use std::sync::Arc;
 use super::dml::CopyTo;
 use super::DdlStatement;
 use crate::builder::{change_redundant_column, unnest_with_options};
-use crate::expr::{Alias, Placeholder, Sort as SortExpr, WindowFunction};
+use crate::expr::{Placeholder, Sort as SortExpr, WindowFunction};
 use crate::expr_rewriter::{create_col_from_scalar_expr, normalize_cols};
 use crate::logical_plan::display::{GraphvizVisitor, IndentVisitor};
 use crate::logical_plan::extension::UserDefinedLogicalNode;
@@ -279,6 +279,15 @@ pub enum LogicalPlan {
     Unnest(Unnest),
     /// A variadic query (e.g. "Recursive CTEs")
     RecursiveQuery(RecursiveQuery),
+}
+
+impl Default for LogicalPlan {
+    fn default() -> Self {
+        LogicalPlan::EmptyRelation(EmptyRelation {
+            produce_one_row: false,
+            schema: Arc::new(DFSchema::empty()),
+        })
+    }
 }
 
 impl LogicalPlan {
@@ -753,9 +762,9 @@ impl LogicalPlan {
                 // If inputs are not pruned do not change schema
                 // TODO this seems wrong (shouldn't we always use the schema of the input?)
                 let schema = if schema.fields().len() == input_schema.fields().len() {
-                    schema.clone()
+                    Arc::clone(&schema)
                 } else {
-                    input_schema.clone()
+                    Arc::clone(input_schema)
                 };
                 Ok(LogicalPlan::Union(Union { inputs, schema }))
             }
@@ -841,26 +850,26 @@ impl LogicalPlan {
                 ..
             }) => Ok(LogicalPlan::Dml(DmlStatement::new(
                 table_name.clone(),
-                table_schema.clone(),
+                Arc::clone(table_schema),
                 op.clone(),
                 Arc::new(inputs.swap_remove(0)),
             ))),
             LogicalPlan::Copy(CopyTo {
                 input: _,
                 output_url,
-                format_options,
+                file_type,
                 options,
                 partition_by,
             }) => Ok(LogicalPlan::Copy(CopyTo {
                 input: Arc::new(inputs.swap_remove(0)),
                 output_url: output_url.clone(),
-                format_options: format_options.clone(),
+                file_type: Arc::clone(file_type),
                 options: options.clone(),
                 partition_by: partition_by.clone(),
             })),
             LogicalPlan::Values(Values { schema, .. }) => {
                 Ok(LogicalPlan::Values(Values {
-                    schema: schema.clone(),
+                    schema: Arc::clone(schema),
                     values: expr
                         .chunks_exact(schema.fields().len())
                         .map(|s| s.to_vec())
@@ -869,38 +878,7 @@ impl LogicalPlan {
             }
             LogicalPlan::Filter { .. } => {
                 assert_eq!(1, expr.len());
-                let predicate = expr.pop().unwrap();
-
-                // filter predicates should not contain aliased expressions so we remove any aliases
-                // before this logic was added we would have aliases within filters such as for
-                // benchmark q6:
-                //
-                // lineitem.l_shipdate >= Date32(\"8766\")
-                // AND lineitem.l_shipdate < Date32(\"9131\")
-                // AND CAST(lineitem.l_discount AS Decimal128(30, 15)) AS lineitem.l_discount >=
-                // Decimal128(Some(49999999999999),30,15)
-                // AND CAST(lineitem.l_discount AS Decimal128(30, 15)) AS lineitem.l_discount <=
-                // Decimal128(Some(69999999999999),30,15)
-                // AND lineitem.l_quantity < Decimal128(Some(2400),15,2)
-
-                let predicate = predicate
-                    .transform_down(|expr| {
-                        match expr {
-                            Expr::Exists { .. }
-                            | Expr::ScalarSubquery(_)
-                            | Expr::InSubquery(_) => {
-                                // subqueries could contain aliases so we don't recurse into those
-                                Ok(Transformed::new(expr, false, TreeNodeRecursion::Jump))
-                            }
-                            Expr::Alias(_) => Ok(Transformed::new(
-                                expr.unalias(),
-                                true,
-                                TreeNodeRecursion::Jump,
-                            )),
-                            _ => Ok(Transformed::no(expr)),
-                        }
-                    })
-                    .data()?;
+                let predicate = expr.pop().unwrap().unalias_nested().data;
 
                 Filter::try_new(predicate, Arc::new(inputs.swap_remove(0)))
                     .map(LogicalPlan::Filter)
@@ -1049,9 +1027,9 @@ impl LogicalPlan {
                 let input_schema = inputs[0].schema();
                 // If inputs are not pruned do not change schema.
                 let schema = if schema.fields().len() == input_schema.fields().len() {
-                    schema.clone()
+                    Arc::clone(schema)
                 } else {
-                    input_schema.clone()
+                    Arc::clone(input_schema)
                 };
                 Ok(LogicalPlan::Union(Union {
                     inputs: inputs.into_iter().map(Arc::new).collect(),
@@ -1095,7 +1073,7 @@ impl LogicalPlan {
                 assert_eq!(inputs.len(), 1);
                 Ok(LogicalPlan::Analyze(Analyze {
                     verbose: a.verbose,
-                    schema: a.schema.clone(),
+                    schema: Arc::clone(&a.schema),
                     input: Arc::new(inputs.swap_remove(0)),
                 }))
             }
@@ -1109,7 +1087,7 @@ impl LogicalPlan {
                     verbose: e.verbose,
                     plan: Arc::new(inputs.swap_remove(0)),
                     stringified_plans: e.stringified_plans.clone(),
-                    schema: e.schema.clone(),
+                    schema: Arc::clone(&e.schema),
                     logical_optimization_succeeded: e.logical_optimization_succeeded,
                 }))
             }
@@ -1391,7 +1369,7 @@ impl LogicalPlan {
         param_values: &ParamValues,
     ) -> Result<LogicalPlan> {
         self.transform_up_with_subqueries(|plan| {
-            let schema = plan.schema().clone();
+            let schema = Arc::clone(plan.schema());
             plan.map_expressions(|e| {
                 e.infer_placeholder_types(&schema)?.transform_up(|e| {
                     if let Expr::Placeholder(Placeholder { id, .. }) = e {
@@ -1750,7 +1728,7 @@ impl LogicalPlan {
                     LogicalPlan::Copy(CopyTo {
                         input: _,
                         output_url,
-                        format_options,
+                        file_type,
                         options,
                         ..
                     }) => {
@@ -1760,7 +1738,7 @@ impl LogicalPlan {
                             .collect::<Vec<String>>()
                             .join(", ");
 
-                        write!(f, "CopyTo: format={format_options} output_url={output_url} options: ({op_str})")
+                        write!(f, "CopyTo: format={} output_url={output_url} options: ({op_str})", file_type.get_ext())
                     }
                     LogicalPlan::Ddl(ddl) => {
                         write!(f, "{}", ddl.display())
@@ -2101,7 +2079,7 @@ impl SubqueryAlias {
         let fields = change_redundant_column(plan.schema().fields());
         let meta_data = plan.schema().as_ref().metadata().clone();
         let schema: Schema =
-            DFSchema::from_unqualifed_fields(fields.into(), meta_data)?.into();
+            DFSchema::from_unqualified_fields(fields.into(), meta_data)?.into();
         // Since schema is the same, other than qualifier, we can use existing
         // functional dependencies:
         let func_dependencies = plan.schema().functional_dependencies().clone();
@@ -2152,16 +2130,10 @@ impl Filter {
             }
         }
 
-        // filter predicates should not be aliased
-        if let Expr::Alias(Alias { expr, name, .. }) = predicate {
-            return plan_err!(
-                "Attempted to create Filter predicate with \
-                expression `{expr}` aliased as '{name}'. Filter predicates should not be \
-                aliased."
-            );
-        }
-
-        Ok(Self { predicate, input })
+        Ok(Self {
+            predicate: predicate.unalias_nested().data,
+            input,
+        })
     }
 
     /// Is this filter guaranteed to return 0 or 1 row in a given instantiation?
@@ -2249,7 +2221,7 @@ impl Window {
         let fields: Vec<(Option<TableReference>, Arc<Field>)> = input
             .schema()
             .iter()
-            .map(|(q, f)| (q.cloned(), f.clone()))
+            .map(|(q, f)| (q.cloned(), Arc::clone(f)))
             .collect();
         let input_len = fields.len();
         let mut window_fields = fields;
@@ -2302,13 +2274,33 @@ impl Window {
             window_func_dependencies.extend(new_deps);
         }
 
-        Ok(Window {
-            input,
+        Self::try_new_with_schema(
             window_expr,
-            schema: Arc::new(
+            input,
+            Arc::new(
                 DFSchema::new_with_metadata(window_fields, metadata)?
                     .with_functional_dependencies(window_func_dependencies)?,
             ),
+        )
+    }
+
+    pub fn try_new_with_schema(
+        window_expr: Vec<Expr>,
+        input: Arc<LogicalPlan>,
+        schema: DFSchemaRef,
+    ) -> Result<Self> {
+        if window_expr.len() != schema.fields().len() - input.schema().fields().len() {
+            return plan_err!(
+                "Window has mismatch between number of expressions ({}) and number of fields in schema ({})",
+                window_expr.len(),
+                schema.fields().len() - input.schema().fields().len()
+            );
+        }
+
+        Ok(Window {
+            input,
+            window_expr,
+            schema,
         })
     }
 }
@@ -2945,10 +2937,12 @@ mod tests {
     use super::*;
     use crate::builder::LogicalTableSource;
     use crate::logical_plan::table_scan;
-    use crate::{col, count, exists, in_subquery, lit, placeholder, GroupingSet};
+    use crate::{col, exists, in_subquery, lit, placeholder, GroupingSet};
 
     use datafusion_common::tree_node::TreeNodeVisitor;
     use datafusion_common::{not_impl_err, Constraint, ScalarValue};
+
+    use crate::test::function_stub::count;
 
     fn employee_schema() -> Schema {
         Schema::new(vec![
@@ -3352,7 +3346,7 @@ digraph {
             vec![col("a")],
             Arc::new(LogicalPlan::EmptyRelation(EmptyRelation {
                 produce_one_row: false,
-                schema: empty_schema.clone(),
+                schema: Arc::clone(&empty_schema),
             })),
             empty_schema,
         );
@@ -3467,9 +3461,9 @@ digraph {
         );
         let scan = Arc::new(LogicalPlan::TableScan(TableScan {
             table_name: TableReference::bare("tab"),
-            source: source.clone(),
+            source: Arc::clone(&source) as Arc<dyn TableSource>,
             projection: None,
-            projected_schema: schema.clone(),
+            projected_schema: Arc::clone(&schema),
             filters: vec![],
             fetch: None,
         }));
@@ -3499,7 +3493,7 @@ digraph {
             table_name: TableReference::bare("tab"),
             source,
             projection: None,
-            projected_schema: unique_schema.clone(),
+            projected_schema: Arc::clone(&unique_schema),
             filters: vec![],
             fetch: None,
         }));

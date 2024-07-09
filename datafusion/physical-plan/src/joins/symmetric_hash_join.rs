@@ -29,7 +29,7 @@ use std::any::Any;
 use std::fmt::{self, Debug};
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use std::{usize, vec};
+use std::vec;
 
 use crate::common::SharedMemoryReservation;
 use crate::handle_state;
@@ -42,7 +42,7 @@ use crate::joins::stream_join_utils::{
 };
 use crate::joins::utils::{
     apply_join_filter_to_indices, build_batch_from_indices, build_join_schema,
-    check_join_is_valid, partitioned_join_output_partitioning, ColumnIndex, JoinFilter,
+    check_join_is_valid, symmetric_join_output_partitioning, ColumnIndex, JoinFilter,
     JoinHashMapType, JoinOn, JoinOnRef, StatefulStreamResult,
 };
 use crate::{
@@ -233,7 +233,7 @@ impl SymmetricHashJoinExec {
         let random_state = RandomState::with_seeds(0, 0, 0, 0);
         let schema = Arc::new(schema);
         let cache =
-            Self::compute_properties(&left, &right, schema.clone(), *join_type, &on);
+            Self::compute_properties(&left, &right, Arc::clone(&schema), *join_type, &on);
         Ok(SymmetricHashJoinExec {
             left,
             right,
@@ -271,14 +271,8 @@ impl SymmetricHashJoinExec {
             join_on,
         );
 
-        // Get output partitioning:
-        let left_columns_len = left.schema().fields.len();
-        let output_partitioning = partitioned_join_output_partitioning(
-            join_type,
-            left.output_partitioning(),
-            right.output_partitioning(),
-            left_columns_len,
-        );
+        let output_partitioning =
+            symmetric_join_output_partitioning(left, right, &join_type);
 
         // Determine execution mode:
         let mode = execution_mode_from_children([left, right]);
@@ -403,7 +397,7 @@ impl ExecutionPlan for SymmetricHashJoinExec {
                 let (left_expr, right_expr) = self
                     .on
                     .iter()
-                    .map(|(l, r)| (l.clone() as _, r.clone() as _))
+                    .map(|(l, r)| (Arc::clone(l) as _, Arc::clone(r) as _))
                     .unzip();
                 vec![
                     Distribution::HashPartitioned(left_expr),
@@ -436,8 +430,8 @@ impl ExecutionPlan for SymmetricHashJoinExec {
         children: Vec<Arc<dyn ExecutionPlan>>,
     ) -> Result<Arc<dyn ExecutionPlan>> {
         Ok(Arc::new(SymmetricHashJoinExec::try_new(
-            children[0].clone(),
-            children[1].clone(),
+            Arc::clone(&children[0]),
+            Arc::clone(&children[1]),
             self.on.clone(),
             self.filter.clone(),
             &self.join_type,
@@ -495,9 +489,9 @@ impl ExecutionPlan for SymmetricHashJoinExec {
         let right_side_joiner =
             OneSideHashJoiner::new(JoinSide::Right, on_right, self.right.schema());
 
-        let left_stream = self.left.execute(partition, context.clone())?;
+        let left_stream = self.left.execute(partition, Arc::clone(&context))?;
 
-        let right_stream = self.right.execute(partition, context.clone())?;
+        let right_stream = self.right.execute(partition, Arc::clone(&context))?;
 
         let reservation = Arc::new(Mutex::new(
             MemoryConsumer::new(format!("SymmetricHashJoinStream[{partition}]"))
@@ -565,7 +559,7 @@ struct SymmetricHashJoinStream {
 
 impl RecordBatchStream for SymmetricHashJoinStream {
     fn schema(&self) -> SchemaRef {
-        self.schema.clone()
+        Arc::clone(&self.schema)
     }
 }
 
@@ -1640,13 +1634,13 @@ mod tests {
         task_ctx: Arc<TaskContext>,
     ) -> Result<()> {
         let first_batches = partitioned_sym_join_with_filter(
-            left.clone(),
-            right.clone(),
+            Arc::clone(&left),
+            Arc::clone(&right),
             on.clone(),
             filter.clone(),
             &join_type,
             false,
-            task_ctx.clone(),
+            Arc::clone(&task_ctx),
         )
         .await?;
         let second_batches = partitioned_hash_join_with_filter(
@@ -2290,8 +2284,8 @@ mod tests {
         )]
         join_type: JoinType,
         #[values(
-        (4, 5),
-        (12, 17),
+            (4, 5),
+            (12, 17),
         )]
         cardinality: (i32, i32),
         #[values(0, 1, 2)] case_expr: usize,
@@ -2375,8 +2369,8 @@ mod tests {
         )]
         join_type: JoinType,
         #[values(
-        (4, 5),
-        (12, 17),
+            (4, 5),
+            (12, 17),
         )]
         cardinality: (i32, i32),
     ) -> Result<()> {
@@ -2452,8 +2446,8 @@ mod tests {
         )]
         join_type: JoinType,
         #[values(
-        (4, 5),
-        (12, 17),
+            (4, 5),
+            (12, 17),
         )]
         cardinality: (i32, i32),
         #[values(0, 1, 2, 3, 4, 5)] case_expr: usize,

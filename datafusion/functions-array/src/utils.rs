@@ -32,7 +32,7 @@ use datafusion_common::{exec_err, plan_err, Result, ScalarValue};
 
 use core::any::type_name;
 use datafusion_common::DataFusionError;
-use datafusion_expr::{ColumnarValue, ScalarFunctionImplementation};
+use datafusion_expr::{ColumnarValue, Expr, ScalarFunctionImplementation};
 
 macro_rules! downcast_arg {
     ($ARG:expr, $ARRAY_TYPE:ident) => {{
@@ -253,11 +253,16 @@ pub(crate) fn compute_array_dims(
     }
 }
 
+/// Returns the name of the argument at index `i`, or an empty string if the index is out of bounds.
+pub(super) fn get_arg_name(args: &[Expr], i: usize) -> String {
+    args.get(i).map(ToString::to_string).unwrap_or_default()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use arrow::datatypes::Int64Type;
-    use datafusion_common::utils::array_into_list_array;
+    use datafusion_common::utils::array_into_list_array_nullable;
 
     /// Only test internal functions, array-related sql functions will be tested in sqllogictest `array.slt`
     #[test]
@@ -272,8 +277,10 @@ mod tests {
                 Some(vec![Some(6), Some(7), Some(8)]),
             ]));
 
-        let array2d_1 = Arc::new(array_into_list_array(array1d_1.clone())) as ArrayRef;
-        let array2d_2 = Arc::new(array_into_list_array(array1d_2.clone())) as ArrayRef;
+        let array2d_1 =
+            Arc::new(array_into_list_array_nullable(array1d_1.clone())) as ArrayRef;
+        let array2d_2 =
+            Arc::new(array_into_list_array_nullable(array1d_2.clone())) as ArrayRef;
 
         let res = align_array_dimensions::<i32>(vec![
             array1d_1.to_owned(),
@@ -289,8 +296,8 @@ mod tests {
             expected_dim
         );
 
-        let array3d_1 = Arc::new(array_into_list_array(array2d_1)) as ArrayRef;
-        let array3d_2 = array_into_list_array(array2d_2.to_owned());
+        let array3d_1 = Arc::new(array_into_list_array_nullable(array2d_1)) as ArrayRef;
+        let array3d_2 = array_into_list_array_nullable(array2d_2.to_owned());
         let res =
             align_array_dimensions::<i32>(vec![array1d_1, Arc::new(array3d_2.clone())])
                 .unwrap();

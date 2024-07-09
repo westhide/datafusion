@@ -41,9 +41,9 @@ DataFusion offers SQL and Dataframe APIs, excellent
 CSV, Parquet, JSON, and Avro, extensive customization, and a great
 community.
 
-The `example usage`_ section in the user guide and the `datafusion-examples`_ code in the crate contain information on using DataFusion.
+To get started with examples, see the `example usage`_ section of the user guide and the `datafusion-examples`_ directory.
 
-Please see the `developer’s guide`_ for contributing and `communication`_ for getting in touch with us.
+See the `developer’s guide`_ for contributing and `communication`_ for getting in touch with us.
 
 .. _example usage: user-guide/example-usage.html
 .. _datafusion-examples: https://github.com/apache/datafusion/tree/main/datafusion-examples
@@ -118,6 +118,7 @@ Please see the `developer’s guide`_ for contributing and `communication`_ for 
    contributor-guide/roadmap
    contributor-guide/quarterly_roadmap
    contributor-guide/governance
+   contributor-guide/inviting
    contributor-guide/specification/index
 
 .. _toc.subprojects:
