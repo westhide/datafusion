@@ -22,20 +22,19 @@
       
   
     
-    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=a746c00c" />
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/pydata-sphinx-theme.css?v=1140d252" />
     <link rel="stylesheet" type="text/css" href="../_static/theme_overrides.css?v=c6d785ac" />
     
     <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=1999514e3f237ded88cf">
   
     <script src="../_static/documentation_options.js?v=8a448e45"></script>
-    <script src="../_static/doctools.js?v=9a2dae69"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
-    <script async="true" defer="true" src="https://buttons.github.io/buttons.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="Testing" href="testing.html" />
-    <link rel="prev" title="Getting Started" href="getting_started.html" />
+    <link rel="prev" title="Development Environment" href="development_environment.html" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="docsearch:language" content="en">
     
@@ -152,6 +151,16 @@
   </a>
  </li>
  <li class="toctree-l1">
+  <a class="reference internal" href="../user-guide/features.html">
+   Features
+  </a>
+ </li>
+ <li class="toctree-l1">
+  <a class="reference internal" href="../user-guide/concepts-readings-events.html">
+   Concepts, Readings, Events
+  </a>
+ </li>
+ <li class="toctree-l1">
   <a class="reference internal" href="../user-guide/crate-configuration.html">
    Crate Configuration
   </a>
@@ -245,7 +254,7 @@
    </li>
    <li class="toctree-l2">
     <a class="reference internal" href="../user-guide/sql/operators.html">
-     Operators
+     Operators and Literals
     </a>
    </li>
    <li class="toctree-l2">
@@ -264,8 +273,8 @@
     </a>
    </li>
    <li class="toctree-l2">
-    <a class="reference internal" href="../user-guide/sql/sql_status.html">
-     Status
+    <a class="reference internal" href="../user-guide/sql/special_functions.html">
+     Special Functions
     </a>
    </li>
    <li class="toctree-l2">
@@ -273,11 +282,21 @@
      Write Options
     </a>
    </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../user-guide/sql/prepared_statements.html">
+     Prepared Statements
+    </a>
+   </li>
   </ul>
  </li>
  <li class="toctree-l1">
   <a class="reference internal" href="../user-guide/configs.html">
    Configuration Settings
+  </a>
+ </li>
+ <li class="toctree-l1">
+  <a class="reference internal" href="../user-guide/explain-usage.html">
+   Reading Explain Plans
   </a>
  </li>
  <li class="toctree-l1">
@@ -295,6 +314,11 @@
  <li class="toctree-l1">
   <a class="reference internal" href="../library-user-guide/index.html">
    Introduction
+  </a>
+ </li>
+ <li class="toctree-l1">
+  <a class="reference internal" href="../library-user-guide/extensions.html">
+   Extensions List
   </a>
  </li>
  <li class="toctree-l1">
@@ -353,6 +377,11 @@
    DataFusion Query Optimizer
   </a>
  </li>
+ <li class="toctree-l1">
+  <a class="reference internal" href="../library-user-guide/upgrading.html">
+   Upgrade Guides
+  </a>
+ </li>
 </ul>
 <p aria-level="2" class="caption" role="heading">
  <span class="caption-text">
@@ -371,8 +400,8 @@
   </a>
  </li>
  <li class="toctree-l1">
-  <a class="reference internal" href="getting_started.html">
-   Getting Started
+  <a class="reference internal" href="development_environment.html">
+   Development Environment
   </a>
  </li>
  <li class="toctree-l1 current active">
@@ -383,6 +412,11 @@
  <li class="toctree-l1">
   <a class="reference internal" href="testing.html">
    Testing
+  </a>
+ </li>
+ <li class="toctree-l1">
+  <a class="reference internal" href="api-health.html">
+   API health policy
   </a>
  </li>
  <li class="toctree-l1">
@@ -426,6 +460,16 @@
     </a>
    </li>
   </ul>
+ </li>
+ <li class="toctree-l1">
+  <a class="reference internal" href="gsoc_application_guidelines.html">
+   GSoC Application Guidelines
+  </a>
+ </li>
+ <li class="toctree-l1">
+  <a class="reference internal" href="gsoc_project_ideas.html">
+   GSoC Project Ideas
+  </a>
  </li>
 </ul>
 <p aria-level="2" class="caption" role="heading">
@@ -481,15 +525,6 @@
  <li class="toc-h2 nav-item toc-entry">
   <a class="reference internal nav-link" href="#forks-vs-extension-apis">
    Forks vs Extension APIs
-  </a>
- </li>
- <li class="toc-h2 nav-item toc-entry">
-  <a class="reference internal nav-link" href="#datafusion-contrib">
-   <code class="docutils literal notranslate">
-    <span class="pre">
-     datafusion-contrib
-    </span>
-   </code>
   </a>
  </li>
  <li class="toc-h2 nav-item toc-entry">
@@ -562,18 +597,8 @@ as <code class="docutils literal notranslate"><span class="pre">TableProvider</s
 DataFusion. If you can not do what you want with the existing APIs, we would
 welcome you working with us to add new APIs to enable your use case, as
 described in the next section.</p>
-</section>
-<section id="datafusion-contrib">
-<h2><code class="docutils literal notranslate"><span class="pre">datafusion-contrib</span></code><a class="headerlink" href="#datafusion-contrib" title="Link to this heading">¶</a></h2>
-<p>While DataFusions comes with enough features “out of the box” to quickly start
-with a working system, it can’t include everything useful feature (e.g.
-<code class="docutils literal notranslate"><span class="pre">TableProvider</span></code>s for all data formats). The <a class="reference external" href="https://github.com/datafusion-contrib"><code class="docutils literal notranslate"><span class="pre">datafusion-contrib</span></code></a> project
-contains a collection of community maintained extensions that are not part of
-the core DataFusion project, and not under Apache Software Foundation governance
-but may be useful to others in the community. If you are interested adding a
-feature to DataFusion, a new extension in <code class="docutils literal notranslate"><span class="pre">datafusion-contrib</span></code> is likely a good
-place to start. Please <a class="reference internal" href="communication.html"><span class="std std-doc">contact</span></a> us via github issue, slack, or Discord and
-we’ll gladly set up a new repository for your extension.</p>
+<p>Please see the <a class="reference internal" href="../library-user-guide/extensions.html"><span class="std std-doc">Extensions</span></a> section to find out more about existing DataFusion
+extensions and how to contribute your extension to the community.</p>
 </section>
 <section id="creating-new-extension-apis">
 <h2>Creating new Extension APIs<a class="headerlink" href="#creating-new-extension-apis" title="Link to this heading">¶</a></h2>
@@ -620,11 +645,11 @@ regression in functionality</p></li>
               
               <!-- Previous / next buttons -->
 <div class='prev-next-area'>
-    <a class='left-prev' id="prev-link" href="getting_started.html" title="previous page">
+    <a class='left-prev' id="prev-link" href="development_environment.html" title="previous page">
         <i class="fas fa-angle-left"></i>
         <div class="prev-next-info">
             <p class="prev-next-subtitle">previous</p>
-            <p class="prev-next-title">Getting Started</p>
+            <p class="prev-next-title">Development Environment</p>
         </div>
     </a>
     <a class='right-next' id="next-link" href="testing.html" title="next page">
@@ -656,7 +681,7 @@ regression in functionality</p></li>
     
     <div class="footer-item">
       <p class="sphinx-version">
-Created using <a href="http://sphinx-doc.org/">Sphinx</a> 8.0.2.<br>
+Created using <a href="http://sphinx-doc.org/">Sphinx</a> 8.2.3.<br>
 </p>
     </div>
     

@@ -22,20 +22,19 @@
       
   
     
-    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=a746c00c" />
+    <link rel="stylesheet" type="text/css" href="../_static/pygments.css?v=8f2a1f02" />
     <link rel="stylesheet" type="text/css" href="../_static/styles/pydata-sphinx-theme.css?v=1140d252" />
     <link rel="stylesheet" type="text/css" href="../_static/theme_overrides.css?v=c6d785ac" />
     
     <link rel="preload" as="script" href="../_static/scripts/pydata-sphinx-theme.js?digest=1999514e3f237ded88cf">
   
     <script src="../_static/documentation_options.js?v=8a448e45"></script>
-    <script src="../_static/doctools.js?v=9a2dae69"></script>
+    <script src="../_static/doctools.js?v=9bcbadda"></script>
     <script src="../_static/sphinx_highlight.js?v=dc90522c"></script>
-    <script async="true" defer="true" src="https://buttons.github.io/buttons.js"></script>
     <link rel="index" title="Index" href="../genindex.html" />
     <link rel="search" title="Search" href="../search.html" />
     <link rel="next" title="Communication" href="communication.html" />
-    <link rel="prev" title="DataFusion Query Optimizer" href="../library-user-guide/query-optimizer.html" />
+    <link rel="prev" title="Upgrade Guides" href="../library-user-guide/upgrading.html" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="docsearch:language" content="en">
     
@@ -152,6 +151,16 @@
   </a>
  </li>
  <li class="toctree-l1">
+  <a class="reference internal" href="../user-guide/features.html">
+   Features
+  </a>
+ </li>
+ <li class="toctree-l1">
+  <a class="reference internal" href="../user-guide/concepts-readings-events.html">
+   Concepts, Readings, Events
+  </a>
+ </li>
+ <li class="toctree-l1">
   <a class="reference internal" href="../user-guide/crate-configuration.html">
    Crate Configuration
   </a>
@@ -245,7 +254,7 @@
    </li>
    <li class="toctree-l2">
     <a class="reference internal" href="../user-guide/sql/operators.html">
-     Operators
+     Operators and Literals
     </a>
    </li>
    <li class="toctree-l2">
@@ -264,8 +273,8 @@
     </a>
    </li>
    <li class="toctree-l2">
-    <a class="reference internal" href="../user-guide/sql/sql_status.html">
-     Status
+    <a class="reference internal" href="../user-guide/sql/special_functions.html">
+     Special Functions
     </a>
    </li>
    <li class="toctree-l2">
@@ -273,11 +282,21 @@
      Write Options
     </a>
    </li>
+   <li class="toctree-l2">
+    <a class="reference internal" href="../user-guide/sql/prepared_statements.html">
+     Prepared Statements
+    </a>
+   </li>
   </ul>
  </li>
  <li class="toctree-l1">
   <a class="reference internal" href="../user-guide/configs.html">
    Configuration Settings
+  </a>
+ </li>
+ <li class="toctree-l1">
+  <a class="reference internal" href="../user-guide/explain-usage.html">
+   Reading Explain Plans
   </a>
  </li>
  <li class="toctree-l1">
@@ -295,6 +314,11 @@
  <li class="toctree-l1">
   <a class="reference internal" href="../library-user-guide/index.html">
    Introduction
+  </a>
+ </li>
+ <li class="toctree-l1">
+  <a class="reference internal" href="../library-user-guide/extensions.html">
+   Extensions List
   </a>
  </li>
  <li class="toctree-l1">
@@ -353,6 +377,11 @@
    DataFusion Query Optimizer
   </a>
  </li>
+ <li class="toctree-l1">
+  <a class="reference internal" href="../library-user-guide/upgrading.html">
+   Upgrade Guides
+  </a>
+ </li>
 </ul>
 <p aria-level="2" class="caption" role="heading">
  <span class="caption-text">
@@ -371,8 +400,8 @@
   </a>
  </li>
  <li class="toctree-l1">
-  <a class="reference internal" href="getting_started.html">
-   Getting Started
+  <a class="reference internal" href="development_environment.html">
+   Development Environment
   </a>
  </li>
  <li class="toctree-l1">
@@ -383,6 +412,11 @@
  <li class="toctree-l1">
   <a class="reference internal" href="testing.html">
    Testing
+  </a>
+ </li>
+ <li class="toctree-l1">
+  <a class="reference internal" href="api-health.html">
+   API health policy
   </a>
  </li>
  <li class="toctree-l1">
@@ -426,6 +460,16 @@
     </a>
    </li>
   </ul>
+ </li>
+ <li class="toctree-l1">
+  <a class="reference internal" href="gsoc_application_guidelines.html">
+   GSoC Application Guidelines
+  </a>
+ </li>
+ <li class="toctree-l1">
+  <a class="reference internal" href="gsoc_project_ideas.html">
+   GSoC Project Ideas
+  </a>
  </li>
 </ul>
 <p aria-level="2" class="caption" role="heading">
@@ -484,9 +528,31 @@
   </a>
   <ul class="visible nav section-nav flex-column">
    <li class="toc-h2 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#development-environment">
+     Development Environment
+    </a>
+   </li>
+   <li class="toc-h2 nav-item toc-entry">
     <a class="reference internal nav-link" href="#finding-and-creating-issues-to-work-on">
      Finding and Creating Issues to Work On
     </a>
+    <ul class="nav section-nav flex-column">
+     <li class="toc-h3 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#open-contribution-and-assigning-tickets">
+       Open Contribution and Assigning tickets
+      </a>
+     </li>
+     <li class="toc-h3 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#discussing-new-features">
+       Discussing New Features
+      </a>
+     </li>
+     <li class="toc-h3 nav-item toc-entry">
+      <a class="reference internal nav-link" href="#what-contributions-are-good-fits">
+       What Contributions are Good Fits?
+      </a>
+     </li>
+    </ul>
    </li>
   </ul>
  </li>
@@ -505,6 +571,11 @@
      Creating Pull Requests
     </a>
    </li>
+   <li class="toc-h2 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#conventional-commits-labeling-prs">
+     Conventional Commits &amp; Labeling PRs
+    </a>
+   </li>
   </ul>
  </li>
  <li class="toc-h1 nav-item toc-entry">
@@ -512,6 +583,11 @@
    Reviewing Pull Requests
   </a>
   <ul class="visible nav section-nav flex-column">
+   <li class="toc-h2 nav-item toc-entry">
+    <a class="reference internal nav-link" href="#performance-improvements">
+     Performance Improvements
+    </a>
+   </li>
    <li class="toc-h2 nav-item toc-entry">
     <a class="reference internal nav-link" href="#major-and-minor-prs">
      “Major” and “Minor” PRs
@@ -582,9 +658,15 @@
 <p>In addition to submitting new PRs, we have a healthy tradition of community
 members reviewing each other’s PRs. Doing so is a great way to help the
 community as well as get more familiar with Rust and the relevant codebases.</p>
+<section id="development-environment">
+<h2>Development Environment<a class="headerlink" href="#development-environment" title="Link to this heading">¶</a></h2>
+<p>You can find how to setup build and testing environment <a class="reference external" href="https://datafusion.apache.org/contributor-guide/development_environment.html">here</a></p>
+</section>
 <section id="finding-and-creating-issues-to-work-on">
 <h2>Finding and Creating Issues to Work On<a class="headerlink" href="#finding-and-creating-issues-to-work-on" title="Link to this heading">¶</a></h2>
 <p>You can find a curated <a class="reference external" href="https://github.com/apache/datafusion/issues?q=is%3Aissue+is%3Aopen+label%3A%22good+first+issue%22">good-first-issue</a> list to help you get started.</p>
+<section id="open-contribution-and-assigning-tickets">
+<h3>Open Contribution and Assigning tickets<a class="headerlink" href="#open-contribution-and-assigning-tickets" title="Link to this heading">¶</a></h3>
 <p>DataFusion is an open contribution project, and thus there is no particular
 project imposed deadline for completing any issue or any restriction on who can
 work on an issue, nor how many people can work on an issue at the same time.</p>
@@ -601,11 +683,48 @@ comment <code class="docutils literal notranslate"><span class="pre">take</span>
 unable to make progress you should unassign the issue by using the <code class="docutils literal notranslate"><span class="pre">unassign</span> <span class="pre">me</span></code>
 link at the top of the issue page (and ask for help if are stuck) so that
 someone else can get involved in the work.</p>
+</section>
+<section id="discussing-new-features">
+<h3>Discussing New Features<a class="headerlink" href="#discussing-new-features" title="Link to this heading">¶</a></h3>
 <p>If you plan to work on a new feature that doesn’t have an existing ticket, it is
 a good idea to open a ticket to discuss the feature. Advanced discussion often
 helps avoid wasted effort by determining early if the feature is a good fit for
-DataFusion before too much time is invested. It also often helps to discuss your
-ideas with the community to get feedback on implementation.</p>
+DataFusion before too much time is invested. Discussion on a ticket can help
+gather feedback from the community and is likely easier to discuss than a 1000
+line PR.</p>
+<p>If you open a ticket and it doesn’t get any response, you can try <code class="docutils literal notranslate"><span class="pre">&#64;</span></code>-mentioning
+recently active community members in the ticket to get their attention.</p>
+</section>
+<section id="what-contributions-are-good-fits">
+<h3>What Contributions are Good Fits?<a class="headerlink" href="#what-contributions-are-good-fits" title="Link to this heading">¶</a></h3>
+<p>DataFusion is designed to be highly extensible, and many features can be
+implemented as extensions without changes or additions to the core. Support for
+new functions, data formats, and similar functionality can be added using those
+extension APIs, and there are already many existing community supported
+extensions listed in the <a class="reference internal" href="../library-user-guide/extensions.html"><span class="std std-doc">extensions list</span></a>.</p>
+<p>Query engines are complex pieces of software to develop and maintain. Given our
+limited maintenance bandwidth, we try to keep the DataFusion core as simple and
+focused as possible, while still satisfying the <a class="reference external" href="https://docs.rs/datafusion/latest/datafusion/index.html#design-goals">design goal</a> of an easy to
+start initial experience.</p>
+<p>With that in mind, contributions that meet the following criteria are more likely
+to be accepted:</p>
+<ol class="arabic simple">
+<li><p>Bug fixes for existing features</p></li>
+<li><p>Test coverage for existing features</p></li>
+<li><p>Documentation improvements / examples</p></li>
+<li><p>Performance improvements to existing features (with benchmarks)</p></li>
+<li><p>“Small” functional improvements to existing features (if they don’t change existing behavior)</p></li>
+<li><p>Additional APIs for extending DataFusion’s capabilities</p></li>
+<li><p>CI improvements</p></li>
+</ol>
+<p>Contributions that will likely involve more discussion (see Discussing New
+Features above) prior to acceptance include:</p>
+<ol class="arabic simple">
+<li><p>Major new functionality (even if it is part of the “standard SQL”)</p></li>
+<li><p>New functions, especially if they aren’t part of “standard SQL”</p></li>
+<li><p>New data sources (e.g. support for Apache ORC)</p></li>
+</ol>
+</section>
 </section>
 </section>
 <section id="developer-s-guide">
@@ -629,30 +748,60 @@ committer who approved your PR to help remind them to merge it.</p>
 </section>
 <section id="creating-pull-requests">
 <h2>Creating Pull Requests<a class="headerlink" href="#creating-pull-requests" title="Link to this heading">¶</a></h2>
-<p>We recommend splitting your contributions into multiple smaller focused PRs rather than large PRs (500+ lines) because:</p>
+<p>When possible, we recommend splitting your contributions into multiple smaller focused PRs rather than large PRs (500+ lines) because:</p>
 <ol class="arabic simple">
 <li><p>The PR is more likely to be reviewed quickly – our reviewers struggle to find the contiguous time needed to review large PRs.</p></li>
 <li><p>The PR discussions tend to be more focused and less likely to get lost among several different threads.</p></li>
 <li><p>It is often easier to accept and act on feedback when it comes early on in a small change, before a particular approach has been polished too much.</p></li>
 </ol>
 <p>If you are concerned that a larger design will be lost in a string of small PRs, creating a large draft PR that shows how they all work together can help.</p>
-<p>Note all commits in a PR are squashed when merged to the <code class="docutils literal notranslate"><span class="pre">main</span></code> branch so there is one commit per PR.</p>
+<p>Note all commits in a PR are squashed when merged to the <code class="docutils literal notranslate"><span class="pre">main</span></code> branch so there is one commit per PR after merge.</p>
+</section>
+<section id="conventional-commits-labeling-prs">
+<h2>Conventional Commits &amp; Labeling PRs<a class="headerlink" href="#conventional-commits-labeling-prs" title="Link to this heading">¶</a></h2>
+<p>We generate change logs for each release using an automated process that will categorize PRs based on the title
+and/or the GitHub labels attached to the PR.</p>
+<p>We follow the <a class="reference external" href="https://www.conventionalcommits.org/en/v1.0.0/">Conventional Commits</a> specification to categorize PRs based on the title. This most often simply means
+looking for titles starting with prefixes such as <code class="docutils literal notranslate"><span class="pre">fix:</span></code>, <code class="docutils literal notranslate"><span class="pre">feat:</span></code>, <code class="docutils literal notranslate"><span class="pre">docs:</span></code>, or <code class="docutils literal notranslate"><span class="pre">chore:</span></code>. We do not enforce this
+convention but encourage its use if you want your PR to feature in the correct section of the changelog.</p>
+<p>The change log generator will also look at GitHub labels such as <code class="docutils literal notranslate"><span class="pre">bug</span></code>, <code class="docutils literal notranslate"><span class="pre">enhancement</span></code>, or <code class="docutils literal notranslate"><span class="pre">api</span> <span class="pre">change</span></code>, and labels
+do take priority over the conventional commit approach, allowing maintainers to re-categorize PRs after they have been merged.</p>
 </section>
 </section>
 <section id="reviewing-pull-requests">
 <h1>Reviewing Pull Requests<a class="headerlink" href="#reviewing-pull-requests" title="Link to this heading">¶</a></h1>
 <p>Some helpful links:</p>
 <ul class="simple">
-<li><p><a class="reference external" href="https://github.com/apache/datafusion/pulls?q=is%3Apr+is%3Aopen+-review%3Aapproved+-is%3Adraft+">PRs Waiting for Review</a></p></li>
-<li><p><a class="reference external" href="https://github.com/apache/datafusion/pulls?q=is%3Apr+is%3Aopen+review%3Aapproved+-is%3Adraft">Approved PRs Waiting for Merge</a></p></li>
+<li><p><a class="reference external" href="https://github.com/apache/datafusion/pulls?q=is%3Apr+is%3Aopen+-review%3Aapproved+-is%3Adraft+">PRs Waiting for Review</a> on GitHub</p></li>
+<li><p><a class="reference external" href="https://github.com/apache/datafusion/pulls?q=is%3Apr+is%3Aopen+review%3Aapproved+-is%3Adraft">Approved PRs Waiting for Merge</a> on GitHub</p></li>
 </ul>
-<p>When reviewing PRs, please remember our primary goal is to improve DataFusion and its community together. PR feedback should be constructive with the aim to help improve the code as well as the understanding of the contributor.</p>
+<p>When reviewing PRs, our primary goal is to improve DataFusion and its community together. PR feedback should be constructive with the aim to help improve the code as well as the understanding of the contributor.</p>
 <p>Please ensure any issues you raise contains a rationale and suggested alternative – it is frustrating to be told “don’t do it this way” without any clear reason or alternate provided.</p>
 <p>Some things to specifically check:</p>
 <ol class="arabic simple">
-<li><p>Is the feature or fix covered sufficiently with tests (see <code class="docutils literal notranslate"><span class="pre">Test</span> <span class="pre">Organization</span></code> below)?</p></li>
+<li><p>Is the feature or fix covered sufficiently with tests (see the <a class="reference internal" href="testing.html"><span class="std std-doc">Testing</span></a> section)?</p></li>
 <li><p>Is the code clear, and fits the style of the existing codebase?</p></li>
 </ol>
+<section id="performance-improvements">
+<h2>Performance Improvements<a class="headerlink" href="#performance-improvements" title="Link to this heading">¶</a></h2>
+<p>Performance improvements are always welcome: performance is a key DataFusion
+feature.</p>
+<p>In general, the performance improvement from a change should be “enough” to
+justify any added code complexity. How much is “enough” is a judgement made by
+the committers, but generally means that the improvement should be noticeable in
+a real-world scenario and is greater than the noise of the benchmarking system.</p>
+<p>To help committers evaluate the potential improvement, performance PRs should
+in general be accompanied by benchmark results that demonstrate the improvement.</p>
+<p>The best way to demonstrate a performance improvement is with the existing
+benchmarks:</p>
+<ul class="simple">
+<li><p><a class="reference external" href="https://github.com/apache/datafusion/tree/main/benchmarks">System level SQL Benchmarks</a></p></li>
+<li><p>Microbenchmarks such as those in <a class="reference external" href="https://github.com/apache/datafusion/tree/main/datafusion/functions/benches">functions/benches</a></p></li>
+</ul>
+<p>If there is no suitable existing benchmark, you can create a new one. It helps
+to isolate the effects of your change by creating a separate PR with the
+benchmark, and then a PR with the code change that improves the benchmark.</p>
+</section>
 <section id="major-and-minor-prs">
 <h2>“Major” and “Minor” PRs<a class="headerlink" href="#major-and-minor-prs" title="Link to this heading">¶</a></h2>
 <p>Since we are a worldwide community, we have contributors in many timezones who review and comment. To ensure anyone who wishes has an opportunity to review a PR, our committers try to ensure that at least 24 hours passes between when a “major” PR is approved and when it is merged.</p>
@@ -678,11 +827,11 @@ Commenting on the PR will remove the <code class="docutils literal notranslate">
               
               <!-- Previous / next buttons -->
 <div class='prev-next-area'>
-    <a class='left-prev' id="prev-link" href="../library-user-guide/query-optimizer.html" title="previous page">
+    <a class='left-prev' id="prev-link" href="../library-user-guide/upgrading.html" title="previous page">
         <i class="fas fa-angle-left"></i>
         <div class="prev-next-info">
             <p class="prev-next-subtitle">previous</p>
-            <p class="prev-next-title">DataFusion Query Optimizer</p>
+            <p class="prev-next-title">Upgrade Guides</p>
         </div>
     </a>
     <a class='right-next' id="next-link" href="communication.html" title="next page">
@@ -714,7 +863,7 @@ Commenting on the PR will remove the <code class="docutils literal notranslate">
     
     <div class="footer-item">
       <p class="sphinx-version">
-Created using <a href="http://sphinx-doc.org/">Sphinx</a> 8.0.2.<br>
+Created using <a href="http://sphinx-doc.org/">Sphinx</a> 8.2.3.<br>
 </p>
     </div>
     

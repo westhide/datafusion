@@ -21,11 +21,27 @@
 
 Tests are critical to ensure that DataFusion is working properly and
 is not accidentally broken during refactorings. All new features
-should have test coverage.
+should have test coverage and the entire test suite is run as part of CI.
 
-DataFusion has several levels of tests in its [Test
-Pyramid](https://martinfowler.com/articles/practical-test-pyramid.html)
-and tries to follow the Rust standard [Testing Organization](https://doc.rust-lang.org/book/ch11-03-test-organization.html) in the The Book.
+DataFusion has several levels of tests in its [Test Pyramid] and tries to follow
+the Rust standard [Testing Organization] described in [The Book].
+
+Run tests using `cargo`:
+
+```shell
+cargo test
+```
+
+You can also use other runners such as [cargo-nextest].
+
+```shell
+cargo nextest run
+```
+
+[test pyramid]: https://martinfowler.com/articles/practical-test-pyramid.html
+[testing organization]: https://doc.rust-lang.org/book/ch11-03-test-organization.html
+[the book]: https://doc.rust-lang.org/book/
+[cargo-nextest]: https://nexte.st/
 
 ## Unit tests
 
@@ -34,11 +50,37 @@ The [test_util](https://github.com/apache/datafusion/tree/main/datafusion/common
 
 ## sqllogictests Tests
 
-DataFusion's SQL implementation is tested using [sqllogictest](https://github.com/apache/datafusion/tree/main/datafusion/sqllogictest) which are run like any other Rust test using `cargo test --test sqllogictests`.
+DataFusion's SQL implementation is tested using [sqllogictest](https://github.com/apache/datafusion/tree/main/datafusion/sqllogictest) which are run like other tests using `cargo test --test sqllogictests`.
 
 `sqllogictests` tests may be less convenient for new contributors who are familiar with writing `.rs` tests as they require learning another tool. However, `sqllogictest` based tests are much easier to develop and maintain as they 1) do not require a slow recompile/link cycle and 2) can be automatically updated via `cargo test --test sqllogictests -- --complete`.
 
 Like similar systems such as [DuckDB](https://duckdb.org/dev/testing), DataFusion has chosen to trade off a slightly higher barrier to contribution for longer term maintainability.
+
+DataFusion has integrated [sqlite's test suite](https://sqlite.org/sqllogictest/doc/trunk/about.wiki) as a supplemental test suite that is run whenever a PR is merged into DataFusion. To run it manually please refer to the [README](https://github.com/apache/datafusion/blob/main/datafusion/sqllogictest/README.md#running-tests-sqlite) file for instructions.
+
+## Snapshot testing
+
+[Insta](https://github.com/mitsuhiko/insta) is used for snapshot testing. Snapshots are generated
+and compared on each test run. If the output changes, tests will fail.
+
+To review the changes, you can use Insta CLI:
+
+```shell
+cargo install cargo-insta
+cargo insta review
+```
+
+## Extended Tests
+
+In addition to the standard CI test suite that is run on all PRs prior to merge,
+DataFusion has "extended" tests (defined in [extended.yml]) that are run on each
+commit to `main`. These tests rarely fail but take significantly longer to run
+than the standard test suite and add important test coverage such as that the
+code works when there are hash collisions as well as running the relevant
+portions of the entire [sqlite test suite].
+
+[extended.yml]: https://github.com/apache/datafusion/blob/main/.github/workflows/extended.yml
+[sqlite test suite]: https://www.sqlite.org/sqllogictest/dir?ci=tip
 
 ## Rust Integration Tests
 
