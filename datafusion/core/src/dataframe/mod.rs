@@ -55,6 +55,7 @@ use datafusion_common::{
     DataFusionError, ParamValues, ScalarValue, SchemaError, UnnestOptions,
 };
 use datafusion_expr::select_expr::SelectExpr;
+use datafusion_expr::ExplainFormat;
 use datafusion_expr::{
     case,
     dml::InsertOp,
@@ -1556,6 +1557,26 @@ impl DataFrame {
         }
         let plan = LogicalPlanBuilder::from(self.plan)
             .explain(verbose, analyze)?
+            .build()?;
+        Ok(DataFrame {
+            session_state: self.session_state,
+            plan,
+            projection_requires_validation: self.projection_requires_validation,
+        })
+    }
+
+    /// explain_with_format
+    pub fn explain_with_format(
+        self,
+        verbose: bool,
+        analyze: bool,
+        format: ExplainFormat,
+    ) -> Result<DataFrame> {
+        if matches!(self.plan, LogicalPlan::Explain(_)) {
+            return plan_err!("Nested EXPLAINs are not supported");
+        }
+        let plan = LogicalPlanBuilder::from(self.plan)
+            .explain_with_format(verbose, analyze, format)?
             .build()?;
         Ok(DataFrame {
             session_state: self.session_state,

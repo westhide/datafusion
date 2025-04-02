@@ -1254,6 +1254,36 @@ impl LogicalPlanBuilder {
         }
     }
 
+    pub fn explain_with_format(
+        self,
+        verbose: bool,
+        analyze: bool,
+        format: ExplainFormat,
+    ) -> Result<Self> {
+        let schema = LogicalPlan::explain_schema();
+        let schema = schema.to_dfschema_ref()?;
+
+        if analyze {
+            Ok(Self::new(LogicalPlan::Analyze(Analyze {
+                verbose,
+                input: self.plan,
+                schema,
+            })))
+        } else {
+            let stringified_plans =
+                vec![self.plan.to_stringified(PlanType::InitialLogicalPlan)];
+
+            Ok(Self::new(LogicalPlan::Explain(Explain {
+                verbose,
+                plan: self.plan,
+                explain_format: format,
+                stringified_plans,
+                schema,
+                logical_optimization_succeeded: false,
+            })))
+        }
+    }
+
     /// Process intersect set operator
     pub fn intersect(
         left_plan: LogicalPlan,
